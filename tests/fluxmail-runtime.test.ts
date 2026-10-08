@@ -2373,6 +2373,87 @@ describe("FluxmailRuntime draft mutations", () => {
     cache.close();
   });
 
+  it.each([false, true])(
+    "keeps earlier messages in an undo-send reply preview (invalidated body: %s)",
+    async (invalidateBody) => {
+      vi.useFakeTimers();
+      vi.setSystemTime("2026-07-21T12:00:00.000Z");
+      const cache = createCache();
+      const original = inboxMessage({
+        id: "original",
+        body: { text: "Original body" },
+        flags: { read: true, starred: false, draft: false },
+      });
+      const followUp = inboxMessage({
+        id: "follow-up",
+        date: "2026-07-17T12:00:00Z",
+        body: { text: "Follow-up body" },
+      });
+      cache.putThread(account, {
+        id: original.threadId,
+        subject: original.subject,
+        messages: [original, followUp],
+      });
+      if (invalidateBody) {
+        // A mailbox refresh can invalidate the body while the conversation stays open.
+        cache.putMessages(account, [{ ...followUp, flags: { ...followUp.flags, read: true } }]);
+        expect(cache.getThread(account.id, original.threadId)).toBeUndefined();
+      }
+      const draft = draftMessage({
+        threadId: original.threadId,
+        date: "2026-07-21T12:00:00Z",
+        body: { text: "Pending reply" },
+      });
+      const scheduled = {
+        scheduleId: "reply-schedule",
+        accountId: account.id,
+        draftId: draft.draftId!,
+        sendAt: "2026-07-21T12:00:10.000Z",
+        status: "pending" as const,
+        attempts: 0,
+      };
+      const getThread = vi.fn(async () => ({
+        id: original.threadId,
+        subject: original.subject,
+        messages: [original, followUp, draft],
+      }));
+      const runtime = createRuntimeWithCache({
+        cache,
+        service: {
+          getMessage: vi.fn(async () => followUp),
+          createDraft: vi.fn(async () => draft),
+          scheduleSend: vi.fn(async () => scheduled),
+          listScheduled: vi.fn(() => [scheduled]),
+          getThread,
+        },
+        onCacheChanged: vi.fn(),
+      });
+
+      await runtime.schedule({
+        accountId: account.id,
+        to: [{ email: "friend@example.com" }],
+        subject: "Re: Hello",
+        text: "Pending reply",
+        replyToMessageId: followUp.id,
+        delaySeconds: 10,
+      });
+
+      const preview = await runtime.getThread(account.id, original.threadId);
+      expect(preview.messages.map((message) => message.id)).toEqual([
+        original.id,
+        followUp.id,
+        draft.id,
+      ]);
+      expect(preview.messages.map((message) => message.body?.text)).toEqual([
+        "Original body",
+        "Follow-up body",
+        "Pending reply",
+      ]);
+      expect(getThread).toHaveBeenCalledTimes(invalidateBody ? 1 : 0);
+      cache.close();
+    },
+  );
+
   it("removes a delivered schedule from Drafts and caches its Sent thread", async () => {
     vi.useFakeTimers();
     vi.setSystemTime("2026-07-21T12:00:00.000Z");
