@@ -126,7 +126,7 @@ Keep release notes in the tracked root `CHANGELOG.md`. Move the user-visible cha
 ```markdown
 # Changelog
 
-## [Unreleased](https://github.com/churichard/fluxmail-desktop/compare/v<version>...HEAD)
+## [Unreleased](https://github.com/fluxmailai/fluxmail-desktop/compare/v<version>...HEAD)
 
 ## [<version>](<release-url>) - YYYY-MM-DD
 

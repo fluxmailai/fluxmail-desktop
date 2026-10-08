@@ -115,7 +115,7 @@ describe("SettingsDialog About links", () => {
     await waitFor(() =>
       expect(openExternal).toHaveBeenNthCalledWith(
         1,
-        "https://github.com/churichard/fluxmail-desktop",
+        "https://github.com/fluxmailai/fluxmail-desktop",
       ),
     );
     expect(openExternal).toHaveBeenNthCalledWith(2, "https://www.fluxmail.ai/terms");
