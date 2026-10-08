@@ -12,7 +12,7 @@ export function renderReleaseNotes(changelog, requestedVersion, signingMode) {
   const version = normalizeVersion(requestedVersion);
   const escapedVersion = escapeRegExp(version);
   const headingPattern = new RegExp(
-    `^## \\[${escapedVersion}\\]\\(https://github\\.com/churichard/fluxmail-desktop/releases/tag/v${escapedVersion}\\) - \\d{4}-\\d{2}-\\d{2}\\s*$`,
+    `^## \\[${escapedVersion}\\]\\(https://github\\.com/fluxmailai/fluxmail-desktop/releases/tag/v${escapedVersion}\\) - \\d{4}-\\d{2}-\\d{2}\\s*$`,
     "m",
   );
   const heading = headingPattern.exec(changelog);

@@ -28,7 +28,7 @@ const ABOUT_ACTIONS = [
   {
     label: "Source code",
     open: () =>
-      window.fluxmail.system.openExternal("https://github.com/churichard/fluxmail-desktop"),
+      window.fluxmail.system.openExternal("https://github.com/fluxmailai/fluxmail-desktop"),
   },
   {
     label: "Software licenses",

@@ -11,7 +11,7 @@ describe("release notes", () => {
     });
 
     expect(notes).toContain(
-      "## [0.2.0](https://github.com/churichard/fluxmail-desktop/releases/tag/v0.2.0) - 2026-07-20",
+      "## [0.2.0](https://github.com/fluxmailai/fluxmail-desktop/releases/tag/v0.2.0) - 2026-07-20",
     );
     expect(notes).toContain("### Fixed");
     expect(notes).not.toContain("## [0.1.0]");

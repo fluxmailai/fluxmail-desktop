@@ -8,7 +8,7 @@ Files owned by Fluxmail in this repository are Source Code Form under the Mozill
 
 The corresponding source code is available at:
 
-https://github.com/churichard/fluxmail-desktop
+https://github.com/fluxmailai/fluxmail-desktop
 
 ## Fluxmail engine
 
@@ -16,7 +16,7 @@ The bundled `fluxmail` and `@fluxmail/*` packages form a separate engine compone
 
 The engine source is available at:
 
-https://github.com/churichard/fluxmail
+https://github.com/fluxmailai/fluxmail
 
 ## Third-party software
 

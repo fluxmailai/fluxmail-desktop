@@ -16,7 +16,7 @@ The first release focuses on the work people do every day: a unified inbox, acco
 Clone the repository and install its dependencies:
 
 ```sh
-git clone git@github.com:churichard/fluxmail-desktop.git
+git clone git@github.com:fluxmailai/fluxmail-desktop.git
 cd fluxmail-desktop
 pnpm install
 ```
