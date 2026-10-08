@@ -405,6 +405,13 @@ export class MailCache {
   putOptimisticDraft(account: AccountInfo, draft: Message): void {
     const existing = this.getThread(account.id, draft.threadId);
     this.putMessages(account, [draft], { invalidateBodies: true });
+    // Metadata can outlive the hydrated body after a mailbox refresh. Keep a cache miss
+    // so the next read fetches the whole conversation instead of showing only the reply.
+    if (
+      !existing &&
+      this.messageIds(account.id, draft.threadId).some((messageId) => messageId !== draft.id)
+    )
+      return;
     const messages = [
       ...(existing?.messages.filter(
         (message) => message.id !== draft.id && message.draftId !== draft.draftId,
