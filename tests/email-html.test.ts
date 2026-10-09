@@ -131,14 +131,29 @@ describe("email HTML security", () => {
     expect(document).toContain('id="email-root"');
   });
 
-  it("normalizes fixed email layouts so they fit the reading pane", () => {
+  it("preserves non-wrapping text in fixed email layouts", () => {
     const document = buildEmailDocument(
       '<table width="1200"><tr><td style="white-space: nowrap">A long line</td></tr></table>',
       {},
       false,
     );
     expect(document).toContain("max-width:100%");
-    expect(document).toContain('style="white-space: normal;"');
+    expect(document).toContain('style="white-space: nowrap"');
+  });
+
+  it("wraps preformatted prose while preserving code formatting", () => {
+    const source = buildEmailDocument(
+      '<div style="white-space: pre">Prose</div><pre style="white-space: pre">Code</pre><code style="white-space: pre">Inline code</code>',
+      {},
+      false,
+    );
+    const document = new DOMParser().parseFromString(source, "text/html");
+
+    expect(document.querySelector("#email-root > div")?.getAttribute("style")).toBe(
+      "white-space: pre-wrap;",
+    );
+    expect(document.querySelector("pre")?.style.whiteSpace).toBe("pre");
+    expect(document.querySelector("code")?.style.whiteSpace).toBe("pre");
   });
 
   it("preserves embedded newsletter styles without loading external stylesheets", () => {

@@ -362,7 +362,7 @@ function buildEmailContent(
       })
     : removeSenderDarkModeCSS(clean);
   const document = new DOMParser().parseFromString(themedHtml, "text/html");
-  normalizeNonWrappingText(document);
+  normalizePreformattedText(document);
   const trackingReport = blockTrackingPixels(document);
   for (const image of document.querySelectorAll("img")) {
     const source = image.getAttribute("src") || "";
@@ -731,12 +731,11 @@ export function applyContentScaling(document: Document, containerWidth: number):
   return scale;
 }
 
-function normalizeNonWrappingText(document: Document): void {
+function normalizePreformattedText(document: Document): void {
   for (const element of document.querySelectorAll<HTMLElement>("[style]")) {
     if (element.closest("pre, code")) continue;
     const whiteSpace = element.style.whiteSpace.toLowerCase();
     if (whiteSpace === "pre") element.style.whiteSpace = "pre-wrap";
-    if (whiteSpace === "nowrap") element.style.whiteSpace = "normal";
   }
 }
 
