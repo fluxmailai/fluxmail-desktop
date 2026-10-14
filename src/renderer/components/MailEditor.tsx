@@ -41,7 +41,7 @@ export function useMailEditor({
         protocols: ["https", "mailto"],
       }),
     ],
-    content: initialHtml,
+    content: editorHtmlFromEmail(initialHtml),
     immediatelyRender: false,
     autofocus: autoFocus ? "end" : false,
     editorProps: {
@@ -59,7 +59,10 @@ export function useMailEditor({
       },
     },
     onUpdate({ editor: instance }) {
-      onChange({ html: instance.getHTML(), text: instance.getText() });
+      onChange({
+        html: emailHtmlFromEditor(instance.getHTML()),
+        text: instance.getText({ blockSeparator: "\n" }),
+      });
     },
   });
 
@@ -70,6 +73,31 @@ export function useMailEditor({
   }, [autoFocus, editor]);
 
   return editor;
+}
+
+/**
+ * The editor starts a new paragraph on every Enter and writes a blank line as an empty paragraph.
+ * Mail clients give paragraphs default margins and collapse empty ones, so every line would arrive
+ * spaced apart and the blank lines would vanish. Zero margins and a break in each empty paragraph
+ * make the message look the way it did in the editor.
+ */
+export function emailHtmlFromEditor(html: string): string {
+  const document = new DOMParser().parseFromString(html, "text/html");
+  for (const paragraph of document.body.querySelectorAll("p")) {
+    paragraph.style.margin = "0";
+    if (!paragraph.hasChildNodes()) paragraph.append(document.createElement("br"));
+  }
+  return document.body.innerHTML;
+}
+
+/** Turns the blank lines {@link emailHtmlFromEditor} wrote back into empty editor paragraphs. */
+function editorHtmlFromEmail(html: string): string {
+  const document = new DOMParser().parseFromString(html, "text/html");
+  for (const paragraph of document.body.querySelectorAll("p")) {
+    if (paragraph.childNodes.length === 1 && paragraph.firstChild?.nodeName === "BR")
+      paragraph.firstChild.remove();
+  }
+  return document.body.innerHTML;
 }
 
 export function MailEditorContent({
