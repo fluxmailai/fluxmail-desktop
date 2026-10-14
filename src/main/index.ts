@@ -385,6 +385,7 @@ function registerIpc(): void {
     const bootstrap = await requireRuntime().bootstrap(syncState);
     return {
       ...bootstrap,
+      desktopVersion: app.getVersion(),
       preferences: {
         appearance: requirePreferences().appearance(),
         dockBadge: requirePreferences().dockBadge(),

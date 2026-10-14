@@ -215,7 +215,9 @@ export class FluxmailRuntime {
       }, 0);
   }
 
-  async bootstrap(sync: BootstrapState["sync"]): Promise<Omit<BootstrapState, "preferences">> {
+  async bootstrap(
+    sync: BootstrapState["sync"],
+  ): Promise<Omit<BootstrapState, "desktopVersion" | "preferences">> {
     const store = this.assertStoreCompatible();
     const accounts = this.accounts();
     this.reconcileCachedAccounts(accounts);

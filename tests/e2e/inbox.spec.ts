@@ -1101,7 +1101,15 @@ test("uses the desktop bridge for the inbox, secure reading, search, compose, an
       hasText: "Shared data format",
     });
     await sharedDataFormat.scrollIntoViewIfNeeded();
-    await expect(settings.getByText("Fluxmail version", { exact: true })).toBeVisible();
+    const desktopVersion = await electronApp.evaluate(({ app }) => app.getVersion());
+    const bootstrap = await page.evaluate(() => window.fluxmail.bootstrap());
+    expect(bootstrap.desktopVersion).toBe(desktopVersion);
+    await expect(
+      settings.locator(".settings-about span", { hasText: "Fluxmail Desktop version" }),
+    ).toHaveText(`Fluxmail Desktop version${desktopVersion}`);
+    await expect(
+      settings.locator(".settings-about span", { hasText: "Fluxmail engine version" }),
+    ).toHaveText(`Fluxmail engine version${bootstrap.engine.version}`);
     await expect(sharedDataFormat.getByText(/^\d+$/)).toBeVisible();
     await expect(settings.getByRole("button", { name: "Source code" })).toBeVisible();
     await expect(settings.getByRole("button", { name: "Software licenses" })).toBeVisible();

@@ -713,7 +713,11 @@ export function SettingsDialog({ state, onState, onClose, onError }: Props) {
             <h2>About</h2>
             <div className="settings-about">
               <span>
-                <strong>Fluxmail version</strong>
+                <strong>Fluxmail Desktop version</strong>
+                <small>{state.desktopVersion}</small>
+              </span>
+              <span>
+                <strong>Fluxmail engine version</strong>
                 <small>{state.engine.version}</small>
               </span>
               <span>

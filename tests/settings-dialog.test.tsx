@@ -211,6 +211,7 @@ function installApi(
 
 function bootstrapState(canUsePrivateImageRelay: boolean): BootstrapState {
   return {
+    desktopVersion: "0.5.1",
     engine: {
       version: "0.5.0",
       storeFormat: 1,

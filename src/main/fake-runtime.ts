@@ -178,7 +178,9 @@ export class FakeFluxmailRuntime {
     return this.inboxUnreadCount();
   }
 
-  async bootstrap(sync: BootstrapState["sync"]): Promise<Omit<BootstrapState, "preferences">> {
+  async bootstrap(
+    sync: BootstrapState["sync"],
+  ): Promise<Omit<BootstrapState, "desktopVersion" | "preferences">> {
     return {
       engine: {
         version: VERSION,
