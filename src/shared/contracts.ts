@@ -360,6 +360,7 @@ export const imageRelayInputSchema = z
 export const imageRelayResultSchema = z.record(z.string().url());
 
 export const bootstrapSchema = z.object({
+  desktopVersion: z.string(),
   engine: z.object({
     version: z.string(),
     storeFormat: z.number().int().nonnegative(),

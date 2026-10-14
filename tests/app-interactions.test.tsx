@@ -1286,6 +1286,7 @@ function installApi(
   } = {},
 ): { emit(event: AppEvent): void; setVisibleThreads(threads: ThreadSummary[]): void } {
   const state: BootstrapState = {
+    desktopVersion: "0.5.1",
     engine: {
       version: "0.3.0",
       storeFormat: 1,
