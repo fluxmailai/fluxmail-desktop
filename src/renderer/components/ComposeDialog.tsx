@@ -17,7 +17,12 @@ import {
   type ScheduledSendResult,
   type UndoSendDelaySeconds,
 } from "../../shared/contracts";
-import { MailEditorContent, MailEditorToolbar, useMailEditor } from "./MailEditor";
+import {
+  emailHtmlFromEditor,
+  MailEditorContent,
+  MailEditorToolbar,
+  useMailEditor,
+} from "./MailEditor";
 import { EmailHtml } from "./EmailHtml";
 import { IconButton } from "./Controls";
 import { quotedReplyCitation, replyWithoutQuotedText } from "../../shared/quoted-reply";
@@ -98,7 +103,7 @@ export const ComposeDialog = forwardRef<ComposeDialogHandle, Props>(function Com
   const [replyToMessageId, setReplyToMessageId] = useState(seed.replyToMessageId);
   const [attachments, setAttachments] = useState<ComposeAttachment[]>(seededBody.attachments);
   const [draftId, setDraftId] = useState(seed.draftId);
-  const [html, setHtml] = useState(initialEditorHtml);
+  const [html, setHtml] = useState(() => emailHtmlFromEditor(initialEditorHtml));
   const [text, setText] = useState(seededBody.text);
   const [showCc, setShowCc] = useState(Boolean(seed.cc));
   const [showBcc, setShowBcc] = useState(Boolean(seed.bcc));

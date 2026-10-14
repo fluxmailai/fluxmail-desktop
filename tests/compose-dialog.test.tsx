@@ -414,6 +414,42 @@ describe("ComposeDialog draft coordination", () => {
     expect(onSent).toHaveBeenCalledWith({ kind: "sent" });
   });
 
+  it("keeps line breaks in a reopened draft sent without edits", async () => {
+    const send = vi.fn(async () => ({ id: "sent", threadId: "thread" }));
+    installApi({ save: vi.fn(), send });
+    render(
+      <ComposeDialog
+        seed={{
+          accountId: "account-1",
+          draftId: "draft-1",
+          to: "sam@example.com",
+          initialHtml: "<p>Best,</p><p></p><p>Richard</p>",
+        }}
+        accounts={[
+          {
+            id: "account-1",
+            email: "me@example.com",
+            provider: "gmail",
+            status: "active",
+          },
+        ]}
+        onClose={vi.fn()}
+        onSent={vi.fn()}
+        onError={vi.fn()}
+        undoSendDelaySeconds={0}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await act(async () => Promise.resolve());
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        html: '<p style="margin: 0px;">Best,</p><p style="margin: 0px;"><br></p><p style="margin: 0px;">Richard</p>',
+      }),
+    );
+  });
+
   it("uses the selected date for scheduled send", async () => {
     const schedule = vi.fn(async (input) => ({
       ...scheduledResult(),
@@ -696,7 +732,7 @@ describe("ComposeDialog draft coordination", () => {
         bcc: [{ email: "archive@example.com" }],
         subject: "Custom subject",
         text: "Formatted note",
-        html: "<p><strong>Formatted note</strong></p>",
+        html: '<p style="margin: 0px;"><strong>Formatted note</strong></p>',
         attachments: [expect.objectContaining({ token: "attachment-token" })],
         includeAttachments: false,
       }),

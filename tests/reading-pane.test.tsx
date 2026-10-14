@@ -420,7 +420,7 @@ describe("ReadingPane", () => {
       expect.objectContaining({
         draftId: "draft-1",
         replyToMessageId: "original-message",
-        html: "<p>Saved answer</p>",
+        html: '<p style="margin: 0px;">Saved answer</p>',
         text: "Saved answer",
         attachments: [],
       }),
@@ -480,7 +480,7 @@ describe("ReadingPane", () => {
       expect.objectContaining({
         draftId: "draft-1",
         replyToMessageId: "original-message",
-        html: "<p>Saved answer</p>",
+        html: '<p style="margin: 0px;">Saved answer</p>',
       }),
     );
   });
@@ -540,7 +540,7 @@ describe("ReadingPane", () => {
       expect.objectContaining({
         draftId: "draft-1",
         replyToMessageId: "later-message",
-        html: foreignQuote,
+        html: foreignQuote.replaceAll("<p>", '<p style="margin: 0px;">'),
       }),
     );
   });
