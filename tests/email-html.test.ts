@@ -141,7 +141,7 @@ describe("email HTML security", () => {
     expect(document).toContain('style="white-space: nowrap"');
   });
 
-  it("keeps declared pixel widths for images in table cells", () => {
+  it("marks images with pixel widths in table cells", () => {
     const document = buildEmailDocument(
       `<table><tr>
         <td><img src="data:image/png;base64,AA" width="60" height="60"></td>
@@ -155,12 +155,13 @@ describe("email HTML security", () => {
     );
     const images = new DOMParser().parseFromString(document, "text/html").querySelectorAll("img");
 
-    expect([...images].map((image) => image.style.minWidth)).toEqual([
-      "min(60px, 100vw)",
-      "min(48px, 100vw)",
-      "",
-      "",
+    expect([...images].map((image) => image.hasAttribute("data-fluxmail-fixed-width"))).toEqual([
+      true,
+      true,
+      false,
+      false,
     ]);
+    expect(document).toContain("img[data-fluxmail-fixed-width]{max-width:100vw!important}");
   });
 
   it("wraps preformatted prose while preserving code formatting", () => {

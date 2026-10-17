@@ -19,10 +19,15 @@ const digestHtml = `<table style="width:100%;max-width:600px;margin:0 auto">
 </table>`;
 
 // Shopify order emails place a fixed-size image beside a width:100% description cell.
-const orderHtml = `<table><tr>
+// Responsive emails pair a pixel width attribute with a stylesheet width:100%.
+const orderHtml = `<style>.fluid{width:100%}</style>
+<table><tr>
   <td><img alt="Tote bag" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'/%3E" width="60" height="60"></td>
   <td style="width:100%">[Free Gift] UREVO Waterproof Magnetic Tote Bag × 1</td>
-</tr></table>`;
+</tr></table>
+<table width="100%"><tr><td style="padding:0 10px">
+  <img alt="Banner" class="fluid" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='600'/%3E" width="600" height="300">
+</td></tr></table>`;
 
 async function withEmail(html: string, check: (page: Page) => Promise<void>): Promise<void> {
   const dataDirectory = mkdtempSync(path.join(tmpdir(), "fluxmail-email-layout-e2e-"));
@@ -90,12 +95,31 @@ test("keeps newsletter divider headings on one line", async () => {
   });
 });
 
-test("keeps the declared size of product images beside full-width cells", async () => {
+test("keeps declared image widths without overriding responsive stylesheets", async () => {
   await withEmail(orderHtml, async (page) => {
-    const image = page.frameLocator('iframe[title="Email message"]').getByRole("img", {
-      name: "Tote bag",
+    const frame = page.locator('iframe[title="Email message"]');
+    const email = page.frameLocator('iframe[title="Email message"]');
+    const product = email.getByRole("img", { name: "Tote bag" });
+    const banner = email.getByRole("img", { name: "Banner" });
+    await frame.evaluate((element) => {
+      element.style.width = "320px";
     });
-    await expect(image).toBeVisible();
-    expect(await image.evaluate((element) => element.getBoundingClientRect().width)).toBe(60);
+    await expect(product).toBeVisible();
+    await expect
+      .poll(() => product.evaluate((element) => element.getBoundingClientRect().width))
+      .toBe(60);
+    await expect
+      .poll(() =>
+        banner.evaluate((element) => {
+          const cell = element.closest("td")!;
+          const style = getComputedStyle(cell);
+          const contentWidth =
+            cell.getBoundingClientRect().width -
+            parseFloat(style.paddingLeft) -
+            parseFloat(style.paddingRight);
+          return element.getBoundingClientRect().width - contentWidth;
+        }),
+      )
+      .toBe(0);
   });
 });
