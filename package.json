@@ -1,6 +1,6 @@
 {
   "name": "fluxmail-desktop",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "private": true,
   "description": "Fluxmail desktop email client",
   "license": "MPL-2.0",
@@ -22,7 +22,7 @@
     "postinstall": "install-electron && electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
-    "@fluxmail/core": "0.11.0",
+    "@fluxmail/core": "0.15.0",
     "@tiptap/extension-link": "^3.27.1",
     "@tiptap/extension-underline": "^3.27.1",
     "@tiptap/react": "^3.27.1",
@@ -30,7 +30,7 @@
     "better-sqlite3": "12.11.1",
     "colord": "^2.9.3",
     "dompurify": "^3.4.3",
-    "fluxmail": "0.11.0",
+    "fluxmail": "0.15.0",
     "google-auth-library": "10.5.0",
     "lucide-react": "^0.468.0",
     "parse5": "8.0.1",
