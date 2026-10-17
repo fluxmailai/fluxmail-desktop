@@ -26,6 +26,17 @@ describe("mailto URLs", () => {
     });
   });
 
+  it("keeps encoded commas inside an address", () => {
+    expect(
+      parseMailtoUrl(
+        "mailto:%22last%2Cfirst%22@example.com,b@example.com?cc=%22x%2Cy%22@example.com",
+      ),
+    ).toMatchObject({
+      to: '"last,first"@example.com, b@example.com',
+      cc: '"x,y"@example.com',
+    });
+  });
+
   it("keeps plus signs literal", () => {
     expect(parseMailtoUrl("mailto:me+tag@example.com?subject=1+1")).toMatchObject({
       to: "me+tag@example.com",
