@@ -3,12 +3,14 @@ import DOMPurify from "dompurify";
 import { Image as ImageIcon } from "lucide-react";
 import { MAX_IMAGE_RELAY_URLS_PER_REQUEST, type MailMessage } from "../../shared/contracts";
 import { parseExternalUrl } from "../../shared/external-url";
+import { parseMailtoUrl, type MailtoFields } from "../../shared/mailto";
 import { convertEmailToDarkMode, removeSenderDarkModeCSS } from "../email/convert-to-dark-mode";
 import { collectRemoteImageUrls, rewriteRemoteImageUrls } from "../email/remote-images";
 import { blockTrackingPixels, type TrackingPixelDetail } from "../email/tracking-pixels";
 
 const EMPTY_IMAGE_URLS: Record<string, string> = {};
 const EMAIL_SOURCE_ATTRIBUTE = "data-fluxmail-source";
+const FIXED_WIDTH_IMAGE_ATTRIBUTE = "data-fluxmail-fixed-width";
 
 export function EmailHtml({
   message,
@@ -18,6 +20,7 @@ export function EmailHtml({
   findQuery = "",
   activeFindMatch,
   onError,
+  onMailto,
   onFindMatchCountChange,
   onTrackingPixelsChange,
 }: {
@@ -28,6 +31,8 @@ export function EmailHtml({
   findQuery?: string;
   activeFindMatch?: number;
   onError?(message: string): void;
+  /** Opens mailto links in Fluxmail. Without it, they go to the system mail handler. */
+  onMailto?(mailto: MailtoFields): void;
   onFindMatchCountChange?(count: number): void;
   onTrackingPixelsChange?(trackingPixels: TrackingPixelDetail[]): void;
 }) {
@@ -60,9 +65,11 @@ export function EmailHtml({
   const currentPolicyKeyRef = useRef(policyKey);
   const onFindMatchCountChangeRef = useRef(onFindMatchCountChange);
   const onErrorRef = useRef(onError);
+  const onMailtoRef = useRef(onMailto);
   currentPolicyKeyRef.current = policyKey;
   onFindMatchCountChangeRef.current = onFindMatchCountChange;
   onErrorRef.current = onError;
+  onMailtoRef.current = onMailto;
   const currentRemoteImages =
     remoteImages.policyKey === policyKey
       ? remoteImages
@@ -140,7 +147,10 @@ export function EmailHtml({
       if (!link) return;
       event.preventDefault();
       const href = link.getAttribute("href");
-      if (href)
+      if (!href) return;
+      const mailto = parseMailtoUrl(href);
+      if (mailto && onMailtoRef.current) onMailtoRef.current(mailto);
+      else
         void window.fluxmail.system
           .openExternal(href)
           .catch((error) =>
@@ -365,6 +375,7 @@ function buildEmailContent(
   normalizePreformattedText(document);
   const trackingReport = blockTrackingPixels(document);
   for (const image of document.querySelectorAll("img")) {
+    markFixedWidthTableImage(image);
     const source = image.getAttribute("src") || "";
     if (source.startsWith("cid:")) {
       const cid = source.slice(4).replace(/^<|>$/g, "");
@@ -410,7 +421,7 @@ function buildEmailContent(
   const senderStyles = [...document.head.querySelectorAll("style")]
     .map((style) => style.outerHTML)
     .join("");
-  const head = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${csp}"><meta name="referrer" content="no-referrer"><meta name="color-scheme" content="${darkMode ? "dark" : "light"}"><style>html,body{width:100%;min-width:0;height:auto!important;margin:0!important;padding:0!important;background:${palette.background};color:${palette.color};font:14px/1.6 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden!important;overflow-wrap:anywhere;box-sizing:border-box}#email-root{display:flow-root;width:100%;min-width:0;max-width:100%;box-sizing:border-box;transform-origin:top left;overflow-wrap:anywhere}#email-root>:first-child{margin-block-start:0!important}#email-root>:last-child{margin-block-end:0!important}a{color:${palette.link};cursor:pointer;overflow-wrap:anywhere;word-break:break-word}table{max-width:100%;overflow-wrap:break-word}td{overflow-wrap:break-word}img{border:0;max-width:100%!important;height:auto!important;object-fit:contain!important}blockquote{border-left:2px solid ${palette.quote};margin-left:4px;padding-left:12px;color:${palette.muted}}pre,pre code{max-width:100%;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere}mark[data-fluxmail-find-match]{border-radius:2px;padding:0;background:#f9d65c;color:#191919;box-shadow:0 0 0 1px rgb(132 91 0 / .16)}mark[data-fluxmail-find-match].active{background:#f39a3b;box-shadow:0 0 0 2px rgb(181 90 0 / .4)}</style>${senderStyles}</head>`;
+  const head = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${csp}"><meta name="referrer" content="no-referrer"><meta name="color-scheme" content="${darkMode ? "dark" : "light"}"><style>html,body{width:100%;min-width:0;height:auto!important;margin:0!important;padding:0!important;background:${palette.background};color:${palette.color};font:14px/1.6 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden!important;overflow-wrap:anywhere;box-sizing:border-box}#email-root{display:flow-root;width:100%;min-width:0;max-width:100%;box-sizing:border-box;transform-origin:top left;overflow-wrap:anywhere}#email-root>:first-child{margin-block-start:0!important}#email-root>:last-child{margin-block-end:0!important}a{color:${palette.link};cursor:pointer;overflow-wrap:anywhere;word-break:break-word}table{max-width:100%;overflow-wrap:break-word}td{overflow-wrap:break-word}img{border:0;max-width:100%!important;height:auto!important;object-fit:contain!important}img[${FIXED_WIDTH_IMAGE_ATTRIBUTE}]{max-width:100vw!important}blockquote{border-left:2px solid ${palette.quote};margin-left:4px;padding-left:12px;color:${palette.muted}}pre,pre code{max-width:100%;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere}mark[data-fluxmail-find-match]{border-radius:2px;padding:0;background:#f9d65c;color:#191919;box-shadow:0 0 0 1px rgb(132 91 0 / .16)}mark[data-fluxmail-find-match].active{background:#f39a3b;box-shadow:0 0 0 2px rgb(181 90 0 / .4)}</style>${senderStyles}</head>`;
   const body = document.body.innerHTML;
   // Tag the root with a hash of the content so the component can tell this document apart from
   // the one it replaces while the frame is still navigating.
@@ -729,6 +740,17 @@ export function applyContentScaling(document: Document, containerWidth: number):
   const scale = containerWidth / naturalWidth;
   root.style.transform = `scale(${scale})`;
   return scale;
+}
+
+// Chromium lets a percentage max-width shrink an image in an auto-sized table cell to almost
+// nothing, so images with a pixel width get a viewport cap instead. Sender stylesheets can still
+// resize them.
+function markFixedWidthTableImage(image: HTMLImageElement): void {
+  if (!image.closest("td, th")) return;
+  const width = (image.style.width || image.getAttribute("width") || "")
+    .trim()
+    .match(/^(\d+(?:\.\d+)?)(?:px)?$/i)?.[1];
+  if (width && Number(width) > 0) image.setAttribute(FIXED_WIDTH_IMAGE_ATTRIBUTE, "");
 }
 
 function normalizePreformattedText(document: Document): void {
