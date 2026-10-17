@@ -397,7 +397,8 @@ export class MailCache {
           options.invalidateBodies ||
           !existing ||
           existing.thread_id !== message.threadId ||
-          existing.payload_json !== payload ||
+          (existing.payload_json !== payload &&
+            canonicalJson(JSON.parse(existing.payload_json)) !== canonicalJson(metadata)) ||
           existing.date !== message.date
         ) {
           if (existing) threadIds.add(existing.thread_id);
@@ -1444,6 +1445,17 @@ function addScheduledDraftExclusion(
     JSON.stringify(
       scheduledDrafts.map((draft) => JSON.stringify([draft.accountId, draft.draftId])),
     ),
+  );
+}
+
+/** Serializes with sorted object keys so payloads that differ only in key order compare equal. */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, nested: unknown) =>
+    nested && typeof nested === "object" && !Array.isArray(nested)
+      ? Object.fromEntries(
+          Object.entries(nested).sort(([left], [right]) => (left < right ? -1 : 1)),
+        )
+      : nested,
   );
 }
 
