@@ -601,6 +601,17 @@ test("uses the desktop bridge for the inbox, secure reading, search, compose, an
       .click({ position: { x: 4, y: 4 } });
     await expect(page.locator(".conversation-title h1")).toHaveText("Receipt for Tuesday");
     await page
+      .frameLocator('iframe[title="Email message"]')
+      .getByRole("link", { name: "Contact us" })
+      .click();
+    const mailtoCompose = page.getByRole("dialog", { name: "New message" });
+    await expect(mailtoCompose.getByRole("button", { name: "Edit recipients" })).toContainText(
+      "help@market.test",
+    );
+    await expect(mailtoCompose.getByLabel("Subject")).toHaveValue("Receipt question");
+    await mailtoCompose.getByRole("button", { name: "Close compose" }).click();
+    await expect(mailtoCompose).toHaveCount(0);
+    await page
       .locator(".thread-row")
       .first()
       .click({ position: { x: 4, y: 4 } });
