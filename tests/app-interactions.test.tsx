@@ -1331,6 +1331,7 @@ function installApi(
     configurable: true,
     value: {
       bootstrap: vi.fn(async () => state),
+      accounts: { sendAs: vi.fn(async () => []) },
       mail: {
         listThreads: vi.fn(async () => ({
           items: visibleThreads,
