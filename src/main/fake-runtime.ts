@@ -17,6 +17,7 @@ import type {
   MailUndoResult,
   ModifyActionInput,
   ScheduledSendInput,
+  SendAsIdentity,
   ThreadListInput,
   ThreadPage,
   ThreadSummary,
@@ -32,6 +33,7 @@ import {
 } from "./demo-fixtures";
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
+const DEMO_ALIAS_EMAIL = "hello@acme.example.com";
 
 const account: AccountInfo = {
   id: DEMO_ACCOUNT_ID,
@@ -246,6 +248,13 @@ export class FakeFluxmailRuntime {
   async connectGmail(_accountId?: string): Promise<AccountInfo> {
     this.connected = true;
     return account;
+  }
+
+  async sendAs(_accountId: string): Promise<SendAsIdentity[]> {
+    return [
+      { email: account.email, name: account.displayName, isPrimary: true },
+      { email: DEMO_ALIAS_EMAIL, name: account.displayName, isPrimary: false },
+    ];
   }
 
   removeAccount(_accountId: string): void {
@@ -484,7 +493,10 @@ export class FakeFluxmailRuntime {
       accountId: account.id,
       draftId,
       folder: { id: "DRAFT", name: "Drafts", role: "drafts" },
-      from: { name: account.displayName, email: account.email },
+      from: {
+        name: account.displayName,
+        email: input.from ?? existing?.from?.email ?? account.email,
+      },
       to: input.to,
       ...(input.cc?.length ? { cc: input.cc } : {}),
       ...(input.bcc?.length ? { bcc: input.bcc } : {}),
@@ -549,7 +561,7 @@ export class FakeFluxmailRuntime {
       threadId: id,
       accountId: account.id,
       folder: { id: "SENT", name: "Sent", role: "sent" },
-      from: { email: account.email },
+      from: { email: input.from ?? account.email },
       to: input.to,
       subject: input.subject,
       date: new Date().toISOString(),
@@ -592,6 +604,7 @@ export class FakeFluxmailRuntime {
   async forward(input: {
     accountId: string;
     messageId: string;
+    from?: string;
     to: Array<{ name?: string; email: string }>;
     cc?: Array<{ name?: string; email: string }>;
     bcc?: Array<{ name?: string; email: string }>;
@@ -617,7 +630,7 @@ export class FakeFluxmailRuntime {
       folder: draftId
         ? { id: "DRAFT", name: "Drafts", role: "drafts" }
         : { id: "SENT", name: "Sent", role: "sent" },
-      from: { email: account.email },
+      from: { email: input.from ?? account.email },
       to: input.to,
       ...(input.cc?.length ? { cc: input.cc } : {}),
       ...(input.bcc?.length ? { bcc: input.bcc } : {}),

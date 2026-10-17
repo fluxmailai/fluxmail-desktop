@@ -29,6 +29,7 @@ import { quotedReplyCitation, replyWithoutQuotedText } from "../../shared/quoted
 import { replyTargets } from "../../shared/reply-recipients";
 import { attachmentsWithoutQuotedInline, replyWithoutQuotedHtml } from "../email/quoted-reply";
 import { SendControls } from "./SendControls";
+import { defaultSender, SenderSelect, useSendAsIdentities } from "./SenderSelect";
 
 export type ComposeDelivery =
   | { kind: "sent" }
@@ -37,6 +38,8 @@ export type ComposeDelivery =
 export interface ComposeSeed {
   accountId: string;
   draftId?: string;
+  /** The address a saved draft is sent from. */
+  from?: string;
   to?: string;
   cc?: string;
   bcc?: string;
@@ -96,6 +99,8 @@ export const ComposeDialog = forwardRef<ComposeDialogHandle, Props>(function Com
   );
   const initialEditorHtml = seededBody.html;
   const [accountId, setAccountId] = useState(seed.accountId);
+  // Left unset, the engine picks the sender, matching the address a reply was sent to.
+  const [from, setFrom] = useState(seed.from);
   const [to, setTo] = useState(seed.to ?? "");
   const [cc, setCc] = useState(seed.cc ?? "");
   const [bcc, setBcc] = useState(seed.bcc ?? "");
@@ -190,6 +195,19 @@ export const ComposeDialog = forwardRef<ComposeDialogHandle, Props>(function Com
   const parsedTo = toField.addresses;
   const parsedCc = ccField.addresses;
   const parsedBcc = bccField.addresses;
+  const senderAccounts = useMemo(
+    () => (accounts.length ? accounts : [{ id: seed.accountId, email: "" }]),
+    [accounts, seed.accountId],
+  );
+  const sendAsIdentities = useSendAsIdentities(
+    useMemo(() => senderAccounts.map((account) => account.id), [senderAccounts]),
+  );
+  const senderEmail =
+    from ??
+    defaultSender(sendAsIdentities[accountId], seed.forwardMessageId ? undefined : quotedMessage)
+      ?.email ??
+    senderAccounts.find((account) => account.id === accountId)?.email ??
+    "";
   const hasDraftContent = Boolean(
     text.trim() || subject.trim() || to.trim() || cc.trim() || bcc.trim() || attachments.length,
   );
@@ -213,6 +231,7 @@ export const ComposeDialog = forwardRef<ComposeDialogHandle, Props>(function Com
         window.fluxmail.drafts.save({
           accountId,
           draftId: draftId ?? pending?.draftId,
+          from,
           to: parsedTo,
           cc: parsedCc,
           bcc: parsedBcc,
@@ -245,6 +264,7 @@ export const ComposeDialog = forwardRef<ComposeDialogHandle, Props>(function Com
     accountId,
     attachments,
     draftId,
+    from,
     hasDraftContent,
     html,
     onError,
@@ -290,6 +310,7 @@ export const ComposeDialog = forwardRef<ComposeDialogHandle, Props>(function Com
             threadId: seed.threadId ?? seed.forwardMessageId,
           },
           messageId: seed.forwardMessageId,
+          from,
           to: parsedTo,
           cc: parsedCc,
           bcc: parsedBcc,
@@ -307,6 +328,7 @@ export const ComposeDialog = forwardRef<ComposeDialogHandle, Props>(function Com
         const scheduled = await window.fluxmail.drafts.schedule({
           accountId,
           draftId: currentDraftId,
+          from,
           to: parsedTo,
           cc: parsedCc,
           bcc: parsedBcc,
@@ -352,6 +374,7 @@ export const ComposeDialog = forwardRef<ComposeDialogHandle, Props>(function Com
         await window.fluxmail.mail.forward({
           target: { accountId, threadId: seed.threadId ?? seed.forwardMessageId },
           messageId: seed.forwardMessageId,
+          from,
           to: parsedTo,
           cc: parsedCc,
           bcc: parsedBcc,
@@ -365,6 +388,7 @@ export const ComposeDialog = forwardRef<ComposeDialogHandle, Props>(function Com
         await window.fluxmail.drafts.send({
           accountId,
           draftId: currentDraftId,
+          from,
           to: parsedTo,
           cc: parsedCc,
           bcc: parsedBcc,
@@ -415,6 +439,7 @@ export const ComposeDialog = forwardRef<ComposeDialogHandle, Props>(function Com
         const result = await window.fluxmail.drafts.save({
           accountId,
           draftId: currentDraftId,
+          from,
           to: parsedTo,
           cc: parsedCc,
           bcc: parsedBcc,
@@ -498,25 +523,17 @@ export const ComposeDialog = forwardRef<ComposeDialogHandle, Props>(function Com
         ) : null}
       </header>
       <div className="compose-fields">
-        {accounts.length > 1 ? (
-          <label>
-            <span>From</span>
-            <select
-              value={accountId}
-              disabled={Boolean(draftId) || saving}
-              onChange={(event) => {
-                revision.current += 1;
-                setAccountId(event.target.value);
-              }}
-            >
-              {accounts.map((account) => (
-                <option value={account.id} key={account.id}>
-                  {account.email}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
+        <SenderSelect
+          accounts={senderAccounts}
+          identities={sendAsIdentities}
+          value={{ accountId, email: senderEmail }}
+          lockAccount={Boolean(draftId) || saving}
+          onChange={(choice) => {
+            revision.current += 1;
+            setAccountId(choice.accountId);
+            setFrom(choice.email);
+          }}
+        />
         <div
           className="compose-recipients"
           onBlurCapture={(event) => {

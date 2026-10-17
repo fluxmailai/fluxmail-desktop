@@ -50,6 +50,7 @@ import {
   mailUndoInputSchema,
   mailUndoResultSchema,
   sendInputSchema,
+  sendAsIdentitySchema,
   sendResultSchema,
   scheduledSendCancelInputSchema,
   scheduledSendCancelResultSchema,
@@ -415,6 +416,9 @@ function registerIpc(): void {
     requireRuntime().removeAccount(accountId);
     sendEvent({ type: "accounts-changed" });
   });
+  handle(IPC.accountsSendAs, z.string(), z.array(sendAsIdentitySchema), async (accountId) =>
+    requireRuntime().sendAs(accountId),
+  );
   handle(IPC.mailList, threadListInputSchema, threadPageSchema, async (input) => {
     activeMailboxInput = mailboxRefreshInput(input);
     const started = performance.now();

@@ -36,7 +36,10 @@ describe("ReadingPane", () => {
     const getThread = vi.fn(() => new Promise<MailThread>(() => undefined));
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
-      value: { mail: { getThread } } as unknown as FluxmailDesktopApi,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread },
+      } as unknown as FluxmailDesktopApi,
     });
 
     renderPane(summary());
@@ -48,7 +51,10 @@ describe("ReadingPane", () => {
     const getThread = vi.fn(async () => detail("Searchable subject", "message-1"));
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
-      value: { mail: { getThread } } as unknown as FluxmailDesktopApi,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread },
+      } as unknown as FluxmailDesktopApi,
     });
     const ref = createRef<ReadingPaneHandle>();
     render(
@@ -81,7 +87,10 @@ describe("ReadingPane", () => {
     const getThread = vi.fn(async () => detail("Searchable subject", "message-1"));
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
-      value: { mail: { getThread } } as unknown as FluxmailDesktopApi,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread },
+      } as unknown as FluxmailDesktopApi,
     });
     const ref = createRef<ReadingPaneHandle>();
     render(
@@ -129,7 +138,10 @@ describe("ReadingPane", () => {
     thread.messages[0]!.bcc = [{ name: "Hidden Person", email: "hidden@example.com" }];
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
-      value: { mail: { getThread: vi.fn(async () => thread) } } as unknown as FluxmailDesktopApi,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread: vi.fn(async () => thread) },
+      } as unknown as FluxmailDesktopApi,
     });
     renderPane(summary());
 
@@ -157,7 +169,10 @@ describe("ReadingPane", () => {
       .mockResolvedValueOnce(detail("Updated subject", "message-2"));
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
-      value: { mail: { getThread } } as unknown as FluxmailDesktopApi,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread },
+      } as unknown as FluxmailDesktopApi,
     });
     const initial = summary({ messageCount: 1, date: "2026-07-16T12:00:00Z" });
     const { rerender } = renderPane(initial);
@@ -184,7 +199,10 @@ describe("ReadingPane", () => {
     const onModify = vi.fn<(action: ModifyActionInput) => Promise<void>>(async () => undefined);
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
-      value: { mail: { getThread } } as unknown as FluxmailDesktopApi,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread },
+      } as unknown as FluxmailDesktopApi,
     });
     renderPane(summary({ folderRoles: ["trash"] }), { view: "trash", onModify });
     await screen.findByText("Deleted subject");
@@ -200,7 +218,10 @@ describe("ReadingPane", () => {
     const onModify = vi.fn<(action: ModifyActionInput) => Promise<void>>(async () => undefined);
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
-      value: { mail: { getThread } } as unknown as FluxmailDesktopApi,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread },
+      } as unknown as FluxmailDesktopApi,
     });
     renderPane(summary({ folderRoles: ["trash"] }), {
       view: "trash",
@@ -218,7 +239,10 @@ describe("ReadingPane", () => {
     const getThread = vi.fn(async () => detail("Direct message", "message-1"));
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
-      value: { mail: { getThread } } as unknown as FluxmailDesktopApi,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread },
+      } as unknown as FluxmailDesktopApi,
     });
     renderPane(summary());
 
@@ -233,7 +257,10 @@ describe("ReadingPane", () => {
     const getThread = vi.fn(async () => thread);
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
-      value: { mail: { getThread } } as unknown as FluxmailDesktopApi,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread },
+      } as unknown as FluxmailDesktopApi,
     });
     renderPane(summary());
 
@@ -250,6 +277,7 @@ describe("ReadingPane", () => {
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
       value: {
+        accounts: { sendAs: async () => [] },
         mail: { getThread },
         attachments: {
           prepare: vi.fn(async () => []),
@@ -319,6 +347,7 @@ describe("ReadingPane", () => {
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
       value: {
+        accounts: { sendAs: async () => [] },
         mail: { getThread: vi.fn(async () => thread) },
         drafts: {
           recipientFields: vi.fn(async () => undefined),
@@ -381,6 +410,7 @@ describe("ReadingPane", () => {
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
       value: {
+        accounts: { sendAs: async () => [] },
         mail: { getThread: vi.fn(async () => thread) },
         drafts: {
           recipientFields: vi.fn(async () => undefined),
@@ -451,6 +481,7 @@ describe("ReadingPane", () => {
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
       value: {
+        accounts: { sendAs: async () => [] },
         mail: { getThread: vi.fn(async () => thread) },
         drafts: {
           recipientFields: vi.fn(async () => undefined),
@@ -511,6 +542,7 @@ describe("ReadingPane", () => {
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
       value: {
+        accounts: { sendAs: async () => [] },
         mail: { getThread: vi.fn(async () => thread) },
         drafts: {
           recipientFields: vi.fn(async () => undefined),
@@ -569,6 +601,7 @@ describe("ReadingPane", () => {
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
       value: {
+        accounts: { sendAs: async () => [] },
         mail: { getThread },
         drafts: {
           recipientFields: vi.fn(async () => undefined),
@@ -650,6 +683,7 @@ describe("ReadingPane", () => {
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
       value: {
+        accounts: { sendAs: async () => [] },
         mail: { getThread: vi.fn(async () => thread) },
       } as unknown as FluxmailDesktopApi,
     });
@@ -683,6 +717,7 @@ describe("ReadingPane", () => {
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
       value: {
+        accounts: { sendAs: async () => [] },
         mail: { getThread: vi.fn(async () => thread) },
       } as unknown as FluxmailDesktopApi,
     });
@@ -715,6 +750,7 @@ describe("ReadingPane", () => {
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
       value: {
+        accounts: { sendAs: async () => [] },
         mail: { getThread },
         drafts: {
           recipientFields: vi.fn(async () => undefined),
@@ -785,6 +821,7 @@ describe("ReadingPane", () => {
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
       value: {
+        accounts: { sendAs: async () => [] },
         mail: { getThread: vi.fn(async () => thread) },
         drafts: {
           recipientFields: vi.fn(async () => undefined),
@@ -853,6 +890,7 @@ describe("ReadingPane", () => {
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
       value: {
+        accounts: { sendAs: async () => [] },
         mail: { getThread, forward },
         attachments: {
           prepare,
@@ -905,6 +943,7 @@ describe("ReadingPane", () => {
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
       value: {
+        accounts: { sendAs: async () => [] },
         mail: { getThread },
         attachments: {
           pick: vi.fn(async () => [attachment]),
@@ -945,7 +984,10 @@ describe("ReadingPane", () => {
     const getThread = vi.fn(async () => detail("Reply subject", "message-1"));
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
-      value: { mail: { getThread } } as unknown as FluxmailDesktopApi,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread },
+      } as unknown as FluxmailDesktopApi,
     });
     const rendered = renderPane(summary(), { quickReplyDiscardVersion: 0 });
     await screen.findByText("Reply subject");
@@ -972,7 +1014,10 @@ describe("ReadingPane", () => {
     const getThread = vi.fn(async () => detail("Reply subject", "message-1"));
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
-      value: { mail: { getThread } } as unknown as FluxmailDesktopApi,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread },
+      } as unknown as FluxmailDesktopApi,
     });
     const { container } = renderPane(summary());
     await screen.findByText("Reply subject");
@@ -991,6 +1036,7 @@ describe("ReadingPane", () => {
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
       value: {
+        accounts: { sendAs: async () => [] },
         mail: { getThread: vi.fn(async () => detail("Reply subject", "message-1")) },
         drafts: { send },
         analytics: { trackFeature: vi.fn(async () => undefined) },
@@ -1013,6 +1059,42 @@ describe("ReadingPane", () => {
     );
   });
 
+  it("replies from the send-as address the message was sent to", async () => {
+    const thread = detail("Alias subject", "message-1");
+    thread.messages[0]!.to = [{ email: "team@example.com" }];
+    const send = vi.fn(async () => ({ id: "sent-message", threadId: "thread-1" }));
+    Object.defineProperty(window, "fluxmail", {
+      configurable: true,
+      value: {
+        accounts: {
+          sendAs: vi.fn(async () => [
+            { email: "me@example.com", isPrimary: true },
+            { email: "team@example.com", isPrimary: false },
+          ]),
+        },
+        mail: { getThread: vi.fn(async () => thread) },
+        drafts: { send },
+        analytics: { trackFeature: vi.fn(async () => undefined) },
+      } as unknown as FluxmailDesktopApi,
+    });
+    renderPane(summary());
+    await screen.findByText("Alias subject");
+
+    fireEvent.click(screen.getByRole("button", { name: "Reply" }));
+    const from = (await screen.findByLabelText("From")) as HTMLSelectElement;
+    expect(from.selectedOptions[0]?.textContent).toBe("team@example.com");
+
+    fireEvent.change(from, { target: { value: "account-1:me@example.com" } });
+    await writeReply("Thanks");
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith(
+        expect.objectContaining({ from: "me@example.com", replyToMessageId: "message-1" }),
+      ),
+    );
+  });
+
   it("names the recipients when a reply address is one Fluxmail cannot send to", async () => {
     const thread = detail("Payment receipt", "message-1");
     thread.messages[0]!.from = { name: "PayPal", email: "service@paypal.example" };
@@ -1022,6 +1104,7 @@ describe("ReadingPane", () => {
     Object.defineProperty(window, "fluxmail", {
       configurable: true,
       value: {
+        accounts: { sendAs: async () => [] },
         mail: { getThread: vi.fn(async () => thread) },
         drafts: { send },
         analytics: { trackFeature: vi.fn(async () => undefined) },
