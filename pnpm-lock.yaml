@@ -12,8 +12,8 @@ importers:
   .:
     dependencies:
       '@fluxmail/core':
-        specifier: 0.11.0
-        version: 0.11.0
+        specifier: 0.15.0
+        version: 0.15.0
       '@tiptap/extension-link':
         specifier: ^3.27.1
         version: 3.27.4(@tiptap/core@3.27.4(@tiptap/pm@3.27.4))(@tiptap/pm@3.27.4)
@@ -36,8 +36,8 @@ importers:
         specifier: ^3.4.3
         version: 3.4.12
       fluxmail:
-        specifier: 0.11.0
-        version: 0.11.0(@types/better-sqlite3@7.6.13)
+        specifier: 0.15.0
+        version: 0.15.0(@types/better-sqlite3@7.6.13)
       google-auth-library:
         specifier: 10.5.0
         version: 10.5.0
@@ -612,17 +612,17 @@ packages:
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
 
-  '@fluxmail/core@0.11.0':
-    resolution: {integrity: sha512-w/ostxUmKZTVEqIKGDAms3XDtgvXVKWg7S4PO8Qj4Dk/NlUkMqsLQhZq8bpp505W3YujrEN6zlmDbV214DkYWQ==}
+  '@fluxmail/core@0.15.0':
+    resolution: {integrity: sha512-ufinMUrEb+qPGd8ZWwu5K679pYeOLWTQPOAJ9XByajcRhg+7zw/OPMGTBnxXR3eN49QbbWSVO6rIid/IxbB2Jw==}
 
-  '@fluxmail/provider-gmail@0.11.0':
-    resolution: {integrity: sha512-a2gA8cXdNHAD0ybV302Gi4kNUqNd2NqlEpQQ9Pqs+L9Czz4IcujSEaER6X5yFv5ivwZGDamZNc54q1d75LGz6w==}
+  '@fluxmail/provider-gmail@0.15.0':
+    resolution: {integrity: sha512-26mPNYtH3GI87P2nquGsYXAfwuHZ1jdLyIrK1m4mHWPjV2IdOhDG4eETFnQcGkpAbrvPKNn4bzG1QYR2B0/VXg==}
 
-  '@fluxmail/provider-imap@0.11.0':
-    resolution: {integrity: sha512-D/2eZYwdjD0rlu3TUOWflI2wekpIg0s6ZM6QsbPGyj7prSbGMJ15Wd/ETncBMAPNcVoQhEP0kOTvG8wLTDxBMQ==}
+  '@fluxmail/provider-imap@0.15.0':
+    resolution: {integrity: sha512-gqApa09N+kIbku+yIf+WjG5wwrDMtCP92Rfjlgruz0pinjofpPHuhtBKNBiJA752kQepPHsTOmW7gP44AeQiCA==}
 
-  '@fluxmail/provider-outlook@0.11.0':
-    resolution: {integrity: sha512-4MASZPhCtTJZ6p49P0j8Cwz9xfB0dmG507yUkqf5pL4X9AR61xZX0KEqClQf7XojQZoq/aO7QelDbgIGE9Nagw==}
+  '@fluxmail/provider-outlook@0.15.0':
+    resolution: {integrity: sha512-ZOkEYuZMBvQMBv9pa9PQ1xpAARshJt7gbcYgYhgAIU+RLAt4IO23gWIH5gYXn9qmUKarcyQZRaC9Wl6TJ4W7tA==}
 
   '@gar/promisify@1.1.3':
     resolution: {integrity: sha512-k2Ty1JcVojjJFwrg/ThKi2ujJ7XNLYaFGNB/bWT9wGR+oSMJHMa5w+CUq6p/pVrKeNNgA7pCqEcjSnHVoqJQFw==}
@@ -2589,9 +2589,9 @@ packages:
     resolution: {integrity: sha512-dz4HxH6pOvbUzZpZ/yXhafjbR2I8cenK5xL0KtBFb7U2ADsR+OwXifnxZjij/pZWF775uSCMzWVd+jDik2H2IA==}
     engines: {node: '>= 12'}
 
-  fluxmail@0.11.0:
-    resolution: {integrity: sha512-YDi0RnzGPeJApfXIiX/+yA4rdiVK7milcZLIa/4o2a1goop52MAskkYtYy4QkAVbutdkbA9n5sB72I1t8r/IiQ==}
-    engines: {node: ^20.20.0 || >=22.22.0}
+  fluxmail@0.15.0:
+    resolution: {integrity: sha512-Ws/iY+3n2jLUZ0Ed67HWJSTvs+jEqttSs2PVnsnS7816ZYCRuycYTEWh4TzHnzlYEoZp4cv6LRwQmQvT5aCKaQ==}
+    engines: {node: '>=22.22.0'}
     hasBin: true
 
   fmix@0.1.0:
@@ -4408,6 +4408,14 @@ packages:
     resolution: {integrity: sha512-b2/KCUlYZUeA7JFUuRJZPUtr4gZvBh7tavtv4fvk4+KV9pfGiR6CQAQAWl49ZpR3ts2dk4FYkP7EIgDJoiOLDA==}
     engines: {node: '>= 0.4.0'}
 
+  unpdf@1.7.0:
+    resolution: {integrity: sha512-MiDhbougTETOvbw/x3hnNr18jzFFrlSitevfO/BHInvtUx68R3Fke9A36GLQfN1LpG1NiJZaV4oPvjioPk9vKQ==}
+    peerDependencies:
+      '@napi-rs/canvas': ^0.1.69
+    peerDependenciesMeta:
+      '@napi-rs/canvas':
+        optional: true
+
   unpipe@1.0.0:
     resolution: {integrity: sha512-pjy2bYhSsufwWlKwPc+l3cN7+wuJlK6uz0YdJEOlQDbl6jo/YlPi4mb8agUkVC8BF7V8NuzeyPNqRksA3hztKQ==}
     engines: {node: '>= 0.8'}
@@ -5376,11 +5384,11 @@ snapshots:
   '@floating-ui/utils@0.2.12':
     optional: true
 
-  '@fluxmail/core@0.11.0': {}
+  '@fluxmail/core@0.15.0': {}
 
-  '@fluxmail/provider-gmail@0.11.0':
+  '@fluxmail/provider-gmail@0.15.0':
     dependencies:
-      '@fluxmail/core': 0.11.0
+      '@fluxmail/core': 0.15.0
       googleapis: 173.0.0
       googleapis-common: 8.0.2
       https-proxy-agent: 7.0.6
@@ -5389,17 +5397,17 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@fluxmail/provider-imap@0.11.0':
+  '@fluxmail/provider-imap@0.15.0':
     dependencies:
-      '@fluxmail/core': 0.11.0
+      '@fluxmail/core': 0.15.0
       iconv-lite: 0.7.3
       imapflow: 1.4.7
       nodemailer: 9.0.3
       postal-mime: 2.7.5
 
-  '@fluxmail/provider-outlook@0.11.0':
+  '@fluxmail/provider-outlook@0.15.0':
     dependencies:
-      '@fluxmail/core': 0.11.0
+      '@fluxmail/core': 0.15.0
 
   '@gar/promisify@1.1.3': {}
 
@@ -7209,12 +7217,12 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  fluxmail@0.11.0(@types/better-sqlite3@7.6.13):
+  fluxmail@0.15.0(@types/better-sqlite3@7.6.13):
     dependencies:
-      '@fluxmail/core': 0.11.0
-      '@fluxmail/provider-gmail': 0.11.0
-      '@fluxmail/provider-imap': 0.11.0
-      '@fluxmail/provider-outlook': 0.11.0
+      '@fluxmail/core': 0.15.0
+      '@fluxmail/provider-gmail': 0.15.0
+      '@fluxmail/provider-imap': 0.15.0
+      '@fluxmail/provider-outlook': 0.15.0
       '@hono/node-server': 1.19.14(hono@4.12.30)
       '@hono/zod-openapi': 0.19.10(hono@4.12.30)(zod@3.25.76)
       '@modelcontextprotocol/sdk': 1.29.0(zod@3.25.76)
@@ -7227,8 +7235,10 @@ snapshots:
       mime-types: 3.0.2
       posthog-node: 5.42.0
       smol-toml: 1.7.0
+      unpdf: 1.7.0
       update-notifier: 7.3.1
       zod: 3.25.76
+      zod-to-json-schema: 3.25.2(zod@3.25.76)
     transitivePeerDependencies:
       - '@aws-sdk/client-rds-data'
       - '@cfworker/json-schema'
@@ -7236,6 +7246,7 @@ snapshots:
       - '@electric-sql/pglite'
       - '@libsql/client'
       - '@libsql/client-wasm'
+      - '@napi-rs/canvas'
       - '@neondatabase/serverless'
       - '@op-engineering/op-sqlite'
       - '@opentelemetry/api'
@@ -9130,6 +9141,8 @@ snapshots:
 
   unorm@1.6.0:
     optional: true
+
+  unpdf@1.7.0: {}
 
   unpipe@1.0.0: {}
 

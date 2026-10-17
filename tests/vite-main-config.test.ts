@@ -19,7 +19,7 @@ afterEach(() => {
 describe("main Vite configuration", () => {
   it("uses the pinned Fluxmail npm package", () => {
     expect(loadInstalledFluxmailVersion()).toBe(reportedFluxmailEngineVersion);
-    expect(reportedFluxmailEngineVersion).toBe("0.11.0");
+    expect(reportedFluxmailEngineVersion).toBe("0.15.0");
   });
 
   it("leaves native dependencies for Electron to load", () => {

@@ -15,8 +15,8 @@ allowBuilds:
   macos-alias: true
 
 minimumReleaseAgeExclude:
-  - '@fluxmail/core@0.11.0'
-  - '@fluxmail/provider-gmail@0.11.0'
-  - '@fluxmail/provider-imap@0.11.0'
-  - '@fluxmail/provider-outlook@0.11.0'
-  - fluxmail@0.11.0
+  - '@fluxmail/core@0.15.0'
+  - '@fluxmail/provider-gmail@0.15.0'
+  - '@fluxmail/provider-imap@0.15.0'
+  - '@fluxmail/provider-outlook@0.15.0'
+  - fluxmail@0.15.0

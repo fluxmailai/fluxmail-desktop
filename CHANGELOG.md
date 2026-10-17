@@ -2,11 +2,30 @@
 
 Fluxmail Desktop records user-facing changes in this file. The format follows [Common Changelog](https://common-changelog.org/).
 
-## [Unreleased](https://github.com/fluxmailai/fluxmail-desktop/compare/v0.5.1...HEAD)
+## [Unreleased](https://github.com/fluxmailai/fluxmail-desktop/compare/v0.6.0...HEAD)
+
+## [0.6.0](https://github.com/fluxmailai/fluxmail-desktop/releases/tag/v0.6.0) - 2026-10-17
+
+_These artifacts use Fluxmail's self-signed certificate and have not been notarized by Apple, so macOS will require approval before opening the app._
+
+### Changed
+
+- Back up the shared Fluxmail data directory before opening Desktop: the bundled Fluxmail 0.15.0 engine moves it to format 6, which Fluxmail CLI versions before 0.13.0 cannot read ([upgrade guide](https://fluxmail.ai/docs/upgrade-fluxmail/))
+
+### Added
+
+- Show the Fluxmail Desktop version in Settings → About, next to the Fluxmail engine version ([#72](https://github.com/fluxmailai/fluxmail-desktop/pull/72))
 
 ### Fixed
 
-- Stop the macOS Keychain password prompt when opening a message after an update.
+- Stop the macOS Keychain password prompt when opening a message after an update; messages opened before this update download again the next time you open them ([#68](https://github.com/fluxmailai/fluxmail-desktop/pull/68))
+- Keep line breaks and blank lines in sent email so it looks the same to recipients as it did in the composer ([#73](https://github.com/fluxmailai/fluxmail-desktop/pull/73))
+- Show earlier messages in a conversation after sending a reply with undo send turned on ([#70](https://github.com/fluxmailai/fluxmail-desktop/pull/70))
+- Keep text that the sender marked as non-wrapping, such as newsletter headings, on one line ([#71](https://github.com/fluxmailai/fluxmail-desktop/pull/71))
+- Keep the retry delay for a scheduled send that failed when Desktop restarts ([fluxmail#125](https://github.com/fluxmailai/fluxmail/pull/125))
+- Show IMAP search results from the folders that finished when a later folder times out ([fluxmail#145](https://github.com/fluxmailai/fluxmail/pull/145))
+- Ask to reconnect a Gmail account that no longer has Gmail permission ([fluxmail#145](https://github.com/fluxmailai/fluxmail/pull/145))
+- Download Outlook attachments that Microsoft reports as larger than they are, and read Outlook inline attachment details correctly ([fluxmail#111](https://github.com/fluxmailai/fluxmail/pull/111))
 
 ## [0.5.1](https://github.com/fluxmailai/fluxmail-desktop/releases/tag/v0.5.1) - 2026-09-27
 
