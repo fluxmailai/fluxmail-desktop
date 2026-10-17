@@ -406,10 +406,10 @@ describe("App thread navigation", () => {
     installMatchMedia();
     render(<App />);
     await screen.findByText("0 conversations");
+    await openComposeWithShortcut();
     vi.useFakeTimers();
     vi.setSystemTime("2026-07-21T12:00:00.000Z");
 
-    fireEvent.keyDown(window, { key: "c" });
     fireEvent.click(screen.getByRole("button", { name: "Finish compose" }));
     expect(screen.getByRole("status").textContent).toContain("Message sent.");
 
@@ -431,10 +431,10 @@ describe("App thread navigation", () => {
     installMatchMedia();
     render(<App />);
     await screen.findByText("0 conversations");
+    await openComposeWithShortcut();
     vi.useFakeTimers();
     vi.setSystemTime("2026-07-21T12:00:00.000Z");
 
-    fireEvent.keyDown(window, { key: "c" });
     fireEvent.click(screen.getByRole("button", { name: "Finish compose" }));
     fireEvent.keyDown(window, { key: "c" });
     fireEvent.click(screen.getByRole("button", { name: "Finish compose" }));
@@ -461,7 +461,7 @@ describe("App thread navigation", () => {
     render(<App />);
     await screen.findByText("0 conversations");
 
-    fireEvent.keyDown(window, { key: "c" });
+    await openComposeWithShortcut();
     fireEvent.click(screen.getByRole("button", { name: "Finish compose" }));
     fireEvent.keyDown(window, { key: "c" });
     fireEvent.click(screen.getByRole("button", { name: "Fail compose" }));
@@ -478,9 +478,9 @@ describe("App thread navigation", () => {
     installMatchMedia();
     render(<App />);
     await screen.findByText("0 conversations");
+    await openComposeWithShortcut();
     vi.useFakeTimers();
 
-    fireEvent.keyDown(window, { key: "c" });
     fireEvent.click(screen.getByRole("button", { name: "Finish immediate compose" }));
     expect(screen.getByRole("status").textContent).toContain("Message sent.");
 
@@ -1265,6 +1265,15 @@ describe("App thread navigation", () => {
     expect(window.fluxmail.mail.modify).not.toHaveBeenCalled();
   });
 });
+
+// The shortcut listener can still hold the pre-bootstrap state right after the first
+// render, so press C until compose opens. The listener ignores C once compose is open.
+async function openComposeWithShortcut(): Promise<void> {
+  await waitFor(() => {
+    if (!screen.queryByRole("dialog", { name: "Compose" })) fireEvent.keyDown(window, { key: "c" });
+    expect(screen.getByRole("dialog", { name: "Compose" })).toBeTruthy();
+  });
+}
 
 function installMatchMedia(): void {
   Object.defineProperty(window, "matchMedia", {
