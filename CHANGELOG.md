@@ -4,6 +4,10 @@ Fluxmail Desktop records user-facing changes in this file. The format follows [C
 
 ## [Unreleased](https://github.com/fluxmailai/fluxmail-desktop/compare/v0.6.0...HEAD)
 
+### Added
+
+- Choose which address to send from, including Gmail send-as aliases, when writing a message, reply, or forward; replies start from the address the original was sent to ([#79](https://github.com/fluxmailai/fluxmail-desktop/pull/79))
+
 ## [0.6.0](https://github.com/fluxmailai/fluxmail-desktop/releases/tag/v0.6.0) - 2026-10-17
 
 _These artifacts use Fluxmail's self-signed certificate and have not been notarized by Apple, so macOS will require approval before opening the app._
