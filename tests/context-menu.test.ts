@@ -72,6 +72,16 @@ describe("context menu", () => {
     expect(handlers.copyText).toHaveBeenCalledWith("first last@example.com");
   });
 
+  it("copies mailto addresses with malformed escapes as written", () => {
+    const handlers = actions();
+    const template = contextMenuTemplate(
+      params({ linkURL: "mailto:user%ZZ@example.com" }),
+      handlers,
+    );
+    click(template, "Copy Email Address");
+    expect(handlers.copyText).toHaveBeenCalledWith("user%ZZ@example.com");
+  });
+
   it("ignores unsafe link protocols", () => {
     expect(contextMenuTemplate(params({ linkURL: "javascript:alert(1)" }), actions())).toEqual([]);
   });

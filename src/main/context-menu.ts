@@ -44,7 +44,7 @@ export function contextMenuTemplate(
 
   const link = parseExternalUrl(params.linkURL);
   if (link?.protocol === "mailto:") {
-    const address = decodeURIComponent(link.pathname);
+    const address = decodeMailtoAddress(link.pathname);
     groups.push([
       { label: "Open Link", click: () => actions.openExternal(link.toString()) },
       { label: "Copy Email Address", click: () => actions.copyText(address) },
@@ -74,4 +74,12 @@ export function contextMenuTemplate(
   return groups.flatMap((group, index) =>
     index === 0 ? group : [{ type: "separator" as const }, ...group],
   );
+}
+
+function decodeMailtoAddress(pathname: string): string {
+  try {
+    return decodeURIComponent(pathname);
+  } catch {
+    return pathname;
+  }
 }
