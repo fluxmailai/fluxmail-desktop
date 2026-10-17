@@ -44,6 +44,36 @@ describe("ReadingPane", () => {
     expect(screen.getByRole("status").textContent).toBe("Opening conversation...");
   });
 
+  it("reopens a recently viewed conversation without a loading state", async () => {
+    let pending = false;
+    const getThread = vi.fn(({ threadId }: { threadId: string }) =>
+      pending
+        ? new Promise<MailThread>(() => undefined)
+        : Promise.resolve({
+            ...detail(`Subject ${threadId}`, `${threadId}-message`),
+            id: threadId,
+          }),
+    );
+    Object.defineProperty(window, "fluxmail", {
+      configurable: true,
+      value: { mail: { getThread } } as unknown as FluxmailDesktopApi,
+    });
+    const { rerender } = renderPane(summary());
+    await screen.findByRole("heading", { name: "Subject thread-1" });
+    rerender(paneElement(summary({ id: "thread-2" })));
+    await screen.findByRole("heading", { name: "Subject thread-2" });
+
+    pending = true;
+    rerender(paneElement(summary()));
+
+    expect(screen.getByRole("heading", { name: "Subject thread-1" })).toBeTruthy();
+    expect(screen.queryByText("Opening conversation...")).toBeNull();
+    expect(getThread).toHaveBeenCalledTimes(3);
+
+    rerender(paneElement(summary({ messageCount: 2 })));
+    expect(screen.getByRole("status").textContent).toBe("Opening conversation...");
+  });
+
   it("opens and closes the conversation find bar through its imperative handle", async () => {
     const getThread = vi.fn(async () => detail("Searchable subject", "message-1"));
     Object.defineProperty(window, "fluxmail", {
@@ -1081,32 +1111,37 @@ async function writeReply(text: string): Promise<void> {
   );
 }
 
-function renderPane(
-  thread: ThreadSummary,
-  options: {
-    view?: "inbox" | "trash" | "scheduled";
-    onModify?: (action: ModifyActionInput) => Promise<void>;
-    quickReplyDiscardVersion?: number;
-    allowPermanentDelete?: boolean;
-    strict?: boolean;
-    onDraftFinished?: () => void;
-  } = {},
-) {
-  const pane = (
+interface PaneOptions {
+  view?: "inbox" | "trash" | "scheduled";
+  onModify?: (action: ModifyActionInput) => Promise<void>;
+  quickReplyDiscardVersion?: number;
+  allowPermanentDelete?: boolean;
+  strict?: boolean;
+  onDraftFinished?: () => void;
+}
+
+const paneCallbacks = { onError: vi.fn(), onQuickReplyDirtyChange: vi.fn() };
+
+function renderPane(thread: ThreadSummary, options: PaneOptions = {}) {
+  const pane = paneElement(thread, options);
+  return render(options.strict ? <StrictMode>{pane}</StrictMode> : pane);
+}
+
+function paneElement(thread: ThreadSummary, options: PaneOptions = {}) {
+  return (
     <ReadingPane
       view={options.view ?? "inbox"}
       thread={thread}
       labels={[]}
       allowPermanentDelete={options.allowPermanentDelete ?? false}
       onModify={options.onModify ?? vi.fn(async () => undefined)}
-      onError={vi.fn()}
-      onQuickReplyDirtyChange={vi.fn()}
+      onError={paneCallbacks.onError}
+      onQuickReplyDirtyChange={paneCallbacks.onQuickReplyDirtyChange}
       undoSendDelaySeconds={0}
       quickReplyDiscardVersion={options.quickReplyDiscardVersion}
       onDraftFinished={options.onDraftFinished}
     />
   );
-  return render(options.strict ? <StrictMode>{pane}</StrictMode> : pane);
 }
 
 function summary(overrides: Partial<ThreadSummary> = {}): ThreadSummary {

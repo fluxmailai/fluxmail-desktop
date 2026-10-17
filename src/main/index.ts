@@ -60,6 +60,7 @@ import {
   threadListInputSchema,
   threadPageSchema,
   threadSchema,
+  threadPrefetchInputSchema,
   threadTargetSchema,
   type AccountInfo,
   type AppEvent,
@@ -445,6 +446,10 @@ function registerIpc(): void {
       cacheHit,
     });
     return thread;
+  });
+  handle(IPC.mailPrefetch, threadPrefetchInputSchema, z.undefined(), (targets) => {
+    requireRuntime().prefetchThreads(targets);
+    return undefined;
   });
   handle(
     IPC.mailModify,

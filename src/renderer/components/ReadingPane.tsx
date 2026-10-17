@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  memo,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -98,6 +99,12 @@ interface InlineComposerState {
   initialAttachments: ComposeAttachment[];
 }
 
+const OPENED_THREAD_CACHE_SIZE = 30;
+const MESSAGE_DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
 export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function ReadingPane(
   {
     view,
@@ -134,6 +141,8 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
   const loadedThreadKey = useRef<string | undefined>(undefined);
   const composerDirty = useRef(false);
   const findInputRef = useRef<HTMLInputElement>(null);
+  // Recently opened conversations, so switching back to one paints without a loading state.
+  const openedThreads = useRef(new Map<string, { version: string; detail: MailThread }>());
   composerRef.current = composer;
   draftSeedRef.current = draftSeed;
   const threadIdentity = thread ? `${thread.accountId}:${thread.id}` : "";
@@ -165,6 +174,12 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
     setFindQuery("");
     setFindMatchCounts({});
     setActiveFindMatch(0);
+  }, []);
+
+  const handleFindMatchCountChange = useCallback((messageId: string, count: number) => {
+    setFindMatchCounts((current) =>
+      current[messageId] === count ? current : { ...current, [messageId]: count },
+    );
   }, []);
 
   useEffect(() => {
@@ -260,12 +275,28 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
     setComposer(undefined);
     if (!thread) return;
     let canceled = false;
-    setLoading(true);
+    const cacheKey = `${thread.accountId}:${thread.id}`;
+    const version = `${thread.date}:${thread.messageCount}`;
+    const opened = openedThreads.current.get(cacheKey);
+    // Drafts open an editor once their attachments are prepared, so always wait for fresh data.
+    const showOpened =
+      opened?.version === version &&
+      !thread.draft &&
+      !thread.pendingSend &&
+      !opened.detail.messages.some((message) => message.flags.draft);
+    if (showOpened) setDetail(opened.detail);
+    setLoading(!showOpened);
     void window.fluxmail.mail
       .getThread({ accountId: thread.accountId, threadId: thread.id })
       .then(async (result) => {
         if (canceled) return;
-        setDetail(result);
+        const cache = openedThreads.current;
+        cache.delete(cacheKey);
+        cache.set(cacheKey, { version, detail: result });
+        if (cache.size > OPENED_THREAD_CACHE_SIZE) cache.delete(cache.keys().next().value!);
+        // Keep the painted conversation when nothing changed, so its message frames stay loaded.
+        if (!showOpened || JSON.stringify(opened.detail) !== JSON.stringify(result))
+          setDetail(result);
         const draft = [...result.messages]
           .reverse()
           .find(
@@ -532,11 +563,7 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
                 imageRelayAvailable={imageRelayAvailable}
                 findQuery={findOpen ? findQuery : ""}
                 activeFindMatch={localActiveFindMatch}
-                onFindMatchCountChange={(count) =>
-                  setFindMatchCounts((current) =>
-                    current[message.id] === count ? current : { ...current, [message.id]: count },
-                  )
-                }
+                onFindMatchCountChange={handleFindMatchCountChange}
                 onError={onError}
               />
             );
@@ -626,7 +653,7 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
   );
 });
 
-function MessageCard({
+const MessageCard = memo(function MessageCard({
   message,
   blockRemoteImages,
   imageRelay,
@@ -642,10 +669,14 @@ function MessageCard({
   imageRelayAvailable: boolean;
   findQuery: string;
   activeFindMatch?: number;
-  onFindMatchCountChange(count: number): void;
+  onFindMatchCountChange(messageId: string, count: number): void;
   onError(message: string): void;
 }) {
   const [expanded, setExpanded] = useState(true);
+  const handleFindMatchCountChange = useCallback(
+    (count: number) => onFindMatchCountChange(message.id, count),
+    [message.id, onFindMatchCountChange],
+  );
   const [trackingPixels, setTrackingPixels] = useState<TrackingPixelDetail[]>([]);
   const senderName = message.from?.name || message.from?.email || "Unknown sender";
   const senderEmail =
@@ -695,12 +726,7 @@ function MessageCard({
             </small>
           ) : null}
         </span>
-        <time>
-          {new Intl.DateTimeFormat(undefined, {
-            dateStyle: "medium",
-            timeStyle: "short",
-          }).format(new Date(message.date))}
-        </time>
+        <time>{MESSAGE_DATE_FORMAT.format(new Date(message.date))}</time>
       </div>
       {contentExpanded ? (
         <div className="message-body">
@@ -711,7 +737,7 @@ function MessageCard({
             imageRelayAvailable={imageRelayAvailable}
             findQuery={findQuery}
             activeFindMatch={activeFindMatch}
-            onFindMatchCountChange={onFindMatchCountChange}
+            onFindMatchCountChange={handleFindMatchCountChange}
             onError={onError}
             onTrackingPixelsChange={setTrackingPixels}
           />
@@ -749,7 +775,7 @@ function MessageCard({
       ) : null}
     </article>
   );
-}
+});
 
 function InlineComposer({
   accountId,

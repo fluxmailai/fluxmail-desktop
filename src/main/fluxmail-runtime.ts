@@ -73,6 +73,9 @@ interface CanceledSchedule extends ScheduledCacheTarget {
 }
 
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
+const MAX_THREAD_PREFETCH = 10;
+const THREAD_PREFETCH_CONCURRENCY = 2;
+const MAX_THREAD_LOAD_ATTEMPTS = 3;
 
 export class FluxmailRuntime {
   private context!: AppContext;
@@ -88,6 +91,10 @@ export class FluxmailRuntime {
   private readonly scheduledCacheTimers = new Map<string, ScheduledCacheTimer>();
   private readonly undoScheduleIds = new Set<string>();
   private readonly providerMutationQueues = new Map<string, Promise<void>>();
+  private readonly threadFetches = new Map<
+    string,
+    { version: string; request: Promise<MailThread | undefined> }
+  >();
   private latestUndo?: {
     token: string;
     action: ModifyActionInput;
@@ -515,15 +522,75 @@ export class FluxmailRuntime {
 
   async getThread(accountId: string, threadId: string): Promise<MailThread> {
     return this.measure("get_thread", async () => {
-      const cached = this.options.cache.getThread(accountId, threadId);
-      if (cached) return { value: cached, cacheStatus: "hit" as const };
-      const account = this.requireAccount(accountId);
-      const thread = await this.context.service.getThread(accountId, threadId);
-      return {
-        value: this.options.cache.putThread(account, thread),
-        cacheStatus: "miss" as const,
-      };
+      // A response that a mutation or mailbox refresh made stale is fetched again. After a few
+      // tries, keep the latest response so a busy mailbox can't stall the reader.
+      for (let attempt = 1; ; attempt += 1) {
+        const cached = this.options.cache.getThread(accountId, threadId);
+        if (cached) return { value: cached, cacheStatus: "hit" as const };
+        const thread = await this.loadThread(accountId, threadId, {
+          cacheStale: attempt >= MAX_THREAD_LOAD_ATTEMPTS,
+        });
+        if (thread) return { value: thread, cacheStatus: "miss" as const };
+      }
     });
+  }
+
+  /** Hydrates conversations the reader is likely to open next so they open from the cache. */
+  prefetchThreads(targets: Array<{ accountId: string; threadId: string }>): void {
+    const accountIds = new Set(this.accounts().map((account) => account.id));
+    const pending = uniqueThreadTargets(targets)
+      .filter(
+        (target) =>
+          accountIds.has(target.accountId) &&
+          !this.threadFetches.has(threadTargetKey(target)) &&
+          !this.options.cache.hasThreadBody(target.accountId, target.threadId),
+      )
+      .slice(0, MAX_THREAD_PREFETCH);
+    if (!pending.length) return;
+    void (async () => {
+      for (let index = 0; index < pending.length; index += THREAD_PREFETCH_CONCURRENCY)
+        await Promise.allSettled(
+          pending
+            .slice(index, index + THREAD_PREFETCH_CONCURRENCY)
+            .map((target) =>
+              this.options.cache.hasThreadBody(target.accountId, target.threadId)
+                ? undefined
+                : this.loadThread(target.accountId, target.threadId),
+            ),
+        );
+    })();
+  }
+
+  /**
+   * Fetches a conversation and caches it unless a mutation or mailbox write touched the thread
+   * while the request was in flight, in which case it resolves to undefined. A prefetch and the
+   * reader opening the same thread share one request, but only while the cache is unchanged.
+   */
+  private loadThread(
+    accountId: string,
+    threadId: string,
+    options: { cacheStale?: boolean } = {},
+  ): Promise<MailThread | undefined> {
+    const key = threadTargetKey({ accountId, threadId });
+    const version = this.threadVersion(accountId, threadId);
+    const inFlight = this.threadFetches.get(key);
+    if (inFlight?.version === version && !options.cacheStale) return inFlight.request;
+    const request = this.context.service
+      .getThread(accountId, threadId)
+      .then((thread) =>
+        options.cacheStale || this.threadVersion(accountId, threadId) === version
+          ? this.options.cache.putThread(this.requireAccount(accountId), thread)
+          : undefined,
+      )
+      .finally(() => {
+        if (this.threadFetches.get(key)?.request === request) this.threadFetches.delete(key);
+      });
+    this.threadFetches.set(key, { version, request });
+    return request;
+  }
+
+  private threadVersion(accountId: string, threadId: string): string {
+    return `${this.cacheGeneration}:${this.options.cache.threadRevision(accountId, threadId)}`;
   }
 
   async modify(
@@ -563,23 +630,52 @@ export class FluxmailRuntime {
           currentMutationId,
         );
       this.options.onCacheChanged();
+      const flags = messageFlagsForAction(action);
       return await this.measure("modify", async () => {
         const groupEntries = groupThreadTargetsByAccount(targets);
+        // Message ids each thread's change was sent to, and which of them the provider confirmed.
+        const sentMessageIds = new Map<string, string[]>();
+        const confirmedMessageIds = new Set<string>();
         const mutationResults = await Promise.allSettled(
           groupEntries.map(([accountId, accountTargets]) =>
             this.enqueueProviderMutation(accountId, async () => {
-              const threads = await Promise.all(
-                accountTargets.map((target) =>
-                  this.context.service.getThread(target.accountId, target.threadId),
-                ),
+              const resolved = await Promise.all(
+                accountTargets.map(async (target) => {
+                  // A flag change without undo can use a fully hydrated conversation's message
+                  // ids. A mailbox listing may hold only some of a thread's messages, and
+                  // anything else needs the provider's current thread, which is also the
+                  // snapshot an undo restores.
+                  const cachedIds =
+                    flags &&
+                    !canUndo &&
+                    this.options.cache.hasThreadBody(target.accountId, target.threadId)
+                      ? this.options.cache.messageIds(target.accountId, target.threadId)
+                      : [];
+                  if (cachedIds.length) return { target, messageIds: cachedIds };
+                  const thread = await this.context.service.getThread(
+                    target.accountId,
+                    target.threadId,
+                  );
+                  return {
+                    target,
+                    thread,
+                    messageIds: thread.messages.map((message) => message.id),
+                  };
+                }),
               );
-              const messageIds = [
-                ...new Set(
-                  threads.flatMap((thread) => thread.messages.map((message) => message.id)),
-                ),
-              ];
-              await this.context.service.modify(accountId, messageIds, toModifyAction(action));
-              return { accountId, threads };
+              for (const { target, messageIds } of resolved)
+                sentMessageIds.set(threadTargetKey(target), messageIds);
+              const result = await this.context.service.modify(
+                accountId,
+                [...new Set(resolved.flatMap(({ messageIds }) => messageIds))],
+                toModifyAction(action),
+              );
+              for (const messageId of result?.succeededIds ?? [])
+                confirmedMessageIds.add(`${accountId}\u0000${messageId}`);
+              return {
+                accountId,
+                threads: resolved.flatMap(({ thread }) => (thread ? [thread] : [])),
+              };
             }),
           ),
         );
@@ -637,6 +733,25 @@ export class FluxmailRuntime {
         } else {
           const rehydrationResults = await Promise.allSettled(
             successfulTargets.map(async (target) => {
+              const messageIds = sentMessageIds.get(threadTargetKey(target)) ?? [];
+              // When the provider confirmed a flag change on every message, record it locally
+              // instead of fetching the conversation again.
+              if (
+                flags &&
+                messageIds.length &&
+                messageIds.every((messageId) =>
+                  confirmedMessageIds.has(`${target.accountId}\u0000${messageId}`),
+                )
+              )
+                return this.options.cache.applyMessageFlagsIfOwned(
+                  this.requireAccount(target.accountId),
+                  target.threadId,
+                  messageIds,
+                  flags,
+                  currentMutationId,
+                )
+                  ? target
+                  : undefined;
               const thread = await this.context.service.getThread(
                 target.accountId,
                 target.threadId,
@@ -653,7 +768,22 @@ export class FluxmailRuntime {
             if (result.status === "fulfilled" && result.value)
               rehydratedTargetKeys.add(threadTargetKey(result.value));
         }
-        await this.folders(true).catch(() => []);
+        // Flag changes leave folders alone. Only read state can move a provider-reported unread
+        // count, and the next sync refreshes folders anyway, so skip the request when no inbox
+        // reports one.
+        const targetAccountIds = new Set(targets.map((target) => target.accountId));
+        const refreshFolders =
+          !flags ||
+          (flags.read !== undefined &&
+            this.options.cache
+              .listFolders()
+              .some(
+                (folder) =>
+                  folder.role === "inbox" &&
+                  folder.unreadCount !== undefined &&
+                  targetAccountIds.has(folder.accountId),
+              ));
+        if (refreshFolders) await this.folders(true).catch(() => []);
         this.options.onCacheChanged();
         const failure = mutationResults.find((result) => result.status === "rejected");
         if (failure?.status === "rejected") throw failure.reason;
@@ -1761,6 +1891,14 @@ function restoreFolderActions(
   if (desired === "trash") return ["trash"];
   if (desired === "archive" || desired === "all") return ["archive"];
   return [{ move: original?.id ?? original?.role ?? original?.name ?? desired }];
+}
+
+function messageFlagsForAction(action: ModifyActionInput): Partial<Message["flags"]> | undefined {
+  if (action.type === "markRead") return { read: true };
+  if (action.type === "markUnread") return { read: false };
+  if (action.type === "star") return { starred: true };
+  if (action.type === "unstar") return { starred: false };
+  return undefined;
 }
 
 function toModifyAction(action: ModifyActionInput): ModifyAction {

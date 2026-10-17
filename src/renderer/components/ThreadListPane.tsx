@@ -442,24 +442,26 @@ function EmptyList({ scheduled }: { scheduled: boolean }) {
   );
 }
 
+const LIST_TIME_FORMAT = new Intl.DateTimeFormat(undefined, {
+  hour: "numeric",
+  minute: "2-digit",
+});
+const LIST_DAY_FORMAT = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+});
+const LIST_DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
+  year: "2-digit",
+  month: "short",
+  day: "numeric",
+});
+
 function formatListDate(value: string): string {
   const date = new Date(value);
   const now = new Date();
-  if (date.toDateString() === now.toDateString())
-    return new Intl.DateTimeFormat(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-    }).format(date);
-  if (date.getFullYear() === now.getFullYear())
-    return new Intl.DateTimeFormat(undefined, {
-      month: "short",
-      day: "numeric",
-    }).format(date);
-  return new Intl.DateTimeFormat(undefined, {
-    year: "2-digit",
-    month: "short",
-    day: "numeric",
-  }).format(date);
+  if (date.toDateString() === now.toDateString()) return LIST_TIME_FORMAT.format(date);
+  if (date.getFullYear() === now.getFullYear()) return LIST_DAY_FORMAT.format(date);
+  return LIST_DATE_FORMAT.format(date);
 }
 
 export function groupThreadsByDate(

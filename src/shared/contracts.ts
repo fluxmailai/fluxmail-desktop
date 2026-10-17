@@ -140,6 +140,7 @@ export const threadTargetSchema = z.object({
   accountId: z.string(),
   threadId: z.string(),
 });
+export const threadPrefetchInputSchema = z.array(threadTargetSchema).max(20);
 export const modifyActionSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.enum([
@@ -466,6 +467,7 @@ export interface FluxmailDesktopApi {
     listThreads(input: ThreadListInput): Promise<ThreadPage>;
     search(input: ThreadListInput): Promise<ThreadPage>;
     getThread(target: z.infer<typeof threadTargetSchema>): Promise<MailThread>;
+    prefetchThreads(targets: Array<z.infer<typeof threadTargetSchema>>): Promise<void>;
     modify(input: {
       targets: Array<z.infer<typeof threadTargetSchema>>;
       action: ModifyActionInput;
@@ -554,6 +556,7 @@ export const IPC = {
   mailList: "fluxmail:mail:list",
   mailSearch: "fluxmail:mail:search",
   mailThread: "fluxmail:mail:thread",
+  mailPrefetch: "fluxmail:mail:prefetch",
   mailModify: "fluxmail:mail:modify",
   mailUndo: "fluxmail:mail:undo",
   mailForward: "fluxmail:mail:forward",

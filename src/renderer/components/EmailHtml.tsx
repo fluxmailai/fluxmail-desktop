@@ -250,6 +250,11 @@ export function EmailHtml({
     () => buildEmailContent(rawHtml, cidUrls, loadImages, darkMode, relayUrls),
     [cidUrls, darkMode, loadImages, rawHtml, relayUrls],
   );
+  // Sanitizing and parsing the message is expensive, and the frame re-renders on every resize.
+  const remoteImagesPresent = useMemo(
+    () => !loadImages && hasRemoteImages(rawHtml),
+    [loadImages, rawHtml],
+  );
 
   useEffect(
     () => onTrackingPixelsChange?.(rendered.trackingPixels),
@@ -304,7 +309,7 @@ export function EmailHtml({
 
   return (
     <div className="email-html-wrap">
-      {!loadImages && hasRemoteImages(rawHtml) ? (
+      {remoteImagesPresent ? (
         <button
           className="load-images"
           disabled={loadingImages || relayUnavailable}
