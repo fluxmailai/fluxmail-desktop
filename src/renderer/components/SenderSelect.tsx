@@ -6,8 +6,15 @@ export interface SenderChoice {
   email: string;
 }
 
-/** Loads the send-as identities of each account. Accounts that fail to load are left out. */
-export function useSendAsIdentities(accountIds: string[]): Record<string, SendAsIdentity[]> {
+/**
+ * Loads the send-as identities of each account. Accounts that fail to load are left out until a
+ * later load succeeds. A new `refreshKey`, such as the open conversation, loads them again so a
+ * failed or outdated list does not stick. The main process caches the list, so this is cheap.
+ */
+export function useSendAsIdentities(
+  accountIds: string[],
+  refreshKey?: string,
+): Record<string, SendAsIdentity[]> {
   const [identities, setIdentities] = useState<Record<string, SendAsIdentity[]>>({});
   const key = accountIds.join("\n");
   useEffect(() => {
@@ -23,7 +30,7 @@ export function useSendAsIdentities(accountIds: string[]): Record<string, SendAs
     return () => {
       canceled = true;
     };
-  }, [key]);
+  }, [key, refreshKey]);
   return identities;
 }
 

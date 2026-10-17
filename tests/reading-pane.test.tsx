@@ -1095,6 +1095,46 @@ describe("ReadingPane", () => {
     );
   });
 
+  it("loads send-as addresses again after a failure when another conversation opens", async () => {
+    const thread = detail("Alias subject", "message-1");
+    const sendAs = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue([
+        { email: "me@example.com", isPrimary: true },
+        { email: "team@example.com", isPrimary: false },
+      ]);
+    Object.defineProperty(window, "fluxmail", {
+      configurable: true,
+      value: {
+        accounts: { sendAs },
+        mail: { getThread: vi.fn(async () => thread) },
+        analytics: { trackFeature: vi.fn(async () => undefined) },
+      } as unknown as FluxmailDesktopApi,
+    });
+    const { rerender } = renderPane(summary());
+    await screen.findByText("Alias subject");
+    await waitFor(() => expect(sendAs).toHaveBeenCalledOnce());
+
+    rerender(
+      <ReadingPane
+        view="inbox"
+        thread={summary({ id: "thread-2" })}
+        labels={[]}
+        allowPermanentDelete={false}
+        onModify={vi.fn(async () => undefined)}
+        onError={vi.fn()}
+        onQuickReplyDirtyChange={vi.fn()}
+        undoSendDelaySeconds={0}
+      />,
+    );
+    await screen.findByText("Alias subject");
+    fireEvent.click(screen.getByRole("button", { name: "Reply" }));
+
+    expect(await screen.findByLabelText("From")).toBeTruthy();
+    expect(sendAs).toHaveBeenCalledTimes(2);
+  });
+
   it("names the recipients when a reply address is one Fluxmail cannot send to", async () => {
     const thread = detail("Payment receipt", "message-1");
     thread.messages[0]!.from = { name: "PayPal", email: "service@paypal.example" };

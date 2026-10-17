@@ -145,9 +145,10 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
   const threadIdentity = thread ? `${thread.accountId}:${thread.id}` : "";
   const threadIdentityRef = useRef(threadIdentity);
   threadIdentityRef.current = threadIdentity;
-  // Loaded with the conversation so the reply composer opens at its final height.
+  // Loaded with each conversation so the reply composer opens at its final height.
   const sendAsIdentities = useSendAsIdentities(
     useMemo(() => (thread ? [thread.accountId] : []), [thread?.accountId]),
+    threadIdentity,
   );
   const handleScrollerRef = useCallback((element: HTMLDivElement | null) => {
     setScroller(element);
