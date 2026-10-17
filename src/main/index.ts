@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   Menu,
@@ -50,6 +51,7 @@ import {
   mailUndoInputSchema,
   mailUndoResultSchema,
   sendInputSchema,
+  sendAsIdentitySchema,
   sendResultSchema,
   scheduledSendCancelInputSchema,
   scheduledSendCancelResultSchema,
@@ -69,6 +71,7 @@ import {
   type ThreadListInput,
 } from "../shared/contracts";
 import { parseExternalUrl } from "../shared/external-url";
+import { contextMenuTemplate } from "./context-menu";
 import { openLegalNotices } from "./legal-notices";
 import { DesktopAnalytics } from "./analytics";
 import { MailCache } from "./cache";
@@ -294,6 +297,19 @@ function createWindow(): void {
     void openTrustedExternal(url).catch(() => undefined);
     return { action: "deny" };
   });
+  mainWindow.webContents.on("context-menu", (_event, params) => {
+    const webContents = mainWindow?.webContents;
+    if (!webContents) return;
+    const template = contextMenuTemplate(params, {
+      openExternal: (url) => void openTrustedExternal(url).catch(() => undefined),
+      copyText: (text) => clipboard.writeText(text),
+      copyImageAt: (x, y) => webContents.copyImageAt(x, y),
+      replaceMisspelling: (word) => webContents.replaceMisspelling(word),
+      addToDictionary: (word) => webContents.session.addWordToSpellCheckerDictionary(word),
+    });
+    if (template.length)
+      Menu.buildFromTemplate(template).popup({ window: mainWindow ?? undefined });
+  });
   mainWindow.webContents.on("will-navigate", (event, url) => {
     if (!isAppUrl(url)) {
       event.preventDefault();
@@ -416,6 +432,9 @@ function registerIpc(): void {
     requireRuntime().removeAccount(accountId);
     sendEvent({ type: "accounts-changed" });
   });
+  handle(IPC.accountsSendAs, z.string(), z.array(sendAsIdentitySchema), async (accountId) =>
+    requireRuntime().sendAs(accountId),
+  );
   handle(IPC.mailList, threadListInputSchema, threadPageSchema, async (input) => {
     activeMailboxInput = mailboxRefreshInput(input);
     const started = performance.now();

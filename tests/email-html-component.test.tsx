@@ -176,13 +176,44 @@ describe("EmailHtml remote image consent", () => {
   });
 });
 
+describe("EmailHtml links", () => {
+  it("hands mailto links to Fluxmail and opens web links externally", () => {
+    installApi(vi.fn(async () => ({})));
+    const onMailto = vi.fn();
+    const { container } = render(
+      <EmailHtml
+        message={{
+          ...message("links"),
+          body: {
+            html: '<a href="mailto:sales@example.com?subject=Hi">Mail</a><a href="https://example.com/">Web</a>',
+          },
+        }}
+        onMailto={onMailto}
+      />,
+    );
+    const frame = container.querySelector("iframe")!;
+    frame.contentDocument!.body.innerHTML = frameDocument(container).body.innerHTML;
+    fireEvent.load(frame);
+    const [mailLink, webLink] = frame.contentDocument!.querySelectorAll("a");
+
+    fireEvent.click(mailLink);
+    expect(onMailto).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "sales@example.com", subject: "Hi" }),
+    );
+    expect(window.fluxmail.system.openExternal).not.toHaveBeenCalled();
+
+    fireEvent.click(webLink);
+    expect(window.fluxmail.system.openExternal).toHaveBeenCalledWith("https://example.com/");
+  });
+});
+
 function installApi(proxy: FluxmailDesktopApi["images"]["proxy"]): void {
   Object.defineProperty(window, "fluxmail", {
     configurable: true,
     value: {
       attachments: { inlineData: vi.fn() },
       images: { proxy },
-      system: { openExternal: vi.fn() },
+      system: { openExternal: vi.fn(async () => undefined) },
     } as unknown as FluxmailDesktopApi,
   });
 }

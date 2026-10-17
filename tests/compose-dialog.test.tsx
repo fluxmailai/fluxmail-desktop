@@ -414,6 +414,61 @@ describe("ComposeDialog draft coordination", () => {
     expect(onSent).toHaveBeenCalledWith({ kind: "sent" });
   });
 
+  it("sends from the send-as address chosen in the From field", async () => {
+    const send = vi.fn(async () => ({ id: "sent", threadId: "thread" }));
+    const sendAs = vi.fn(async () => [
+      { email: "me@example.com", name: "Me", isPrimary: true },
+      { email: "team@example.com", name: "Team", isPrimary: false },
+    ]);
+    installApi({ save: vi.fn(), send, sendAs });
+    render(
+      <ComposeDialog
+        seed={{
+          accountId: "account-1",
+          to: "sam@example.com",
+          initialHtml: "<p>Hello</p>",
+          initialText: "Hello",
+        }}
+        accounts={[
+          {
+            id: "account-1",
+            email: "me@example.com",
+            provider: "gmail",
+            status: "active",
+          },
+        ]}
+        onClose={vi.fn()}
+        onSent={vi.fn()}
+        onError={vi.fn()}
+        undoSendDelaySeconds={0}
+      />,
+    );
+    await act(async () => Promise.resolve());
+
+    const from = screen.getByLabelText("From") as HTMLSelectElement;
+    expect(sendAs).toHaveBeenCalledWith("account-1");
+    expect(from.selectedOptions[0]?.textContent).toBe("Me <me@example.com>");
+
+    fireEvent.change(from, { target: { value: "account-1:team@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await act(async () => Promise.resolve());
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: "account-1", from: "team@example.com" }),
+    );
+  });
+
+  it("hides the From field when the only account has one address", async () => {
+    installApi({
+      save: vi.fn(),
+      sendAs: vi.fn(async () => [{ email: "me@example.com", isPrimary: true }]),
+    });
+    renderDialog();
+    await act(async () => Promise.resolve());
+
+    expect(screen.queryByLabelText("From")).toBeNull();
+  });
+
   it("keeps line breaks in a reopened draft sent without edits", async () => {
     const send = vi.fn(async () => ({ id: "sent", threadId: "thread" }));
     installApi({ save: vi.fn(), send });
@@ -796,8 +851,10 @@ function installApi(input: {
   release?: ReturnType<typeof vi.fn>;
   forward?: ReturnType<typeof vi.fn>;
   getThread?: ReturnType<typeof vi.fn>;
+  sendAs?: ReturnType<typeof vi.fn>;
 }): void {
   const api = {
+    accounts: { sendAs: input.sendAs ?? vi.fn(async () => []) },
     drafts: {
       save: input.save,
       delete: input.deleteDraft ?? vi.fn(async () => undefined),

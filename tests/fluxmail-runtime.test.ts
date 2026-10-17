@@ -1975,6 +1975,66 @@ describe("FluxmailRuntime draft mutations", () => {
     expect(onCacheChanged).toHaveBeenCalledOnce();
   });
 
+  it("sends from the chosen send-as address", async () => {
+    const send = vi.fn(async () => ({ id: "sent-message", threadId: "sent-thread" }));
+    const runtime = createRuntime({
+      service: { send, getThread: vi.fn(async () => ({ id: "sent-thread", messages: [] })) },
+      cache: {},
+      onCacheChanged: vi.fn(),
+    });
+
+    await runtime.send({
+      accountId: account.id,
+      from: "team@example.com",
+      to: [{ email: "sam@example.com" }],
+      subject: "Hello",
+      text: "Hi",
+    });
+
+    expect(send).toHaveBeenCalledWith(
+      account.id,
+      expect.objectContaining({ from: "team@example.com" }),
+    );
+  });
+
+  it("lists send-as identities primary first and reuses them", async () => {
+    const listSendAs = vi.fn(async () => [
+      { email: "team@example.com", name: "Team", isPrimary: false, source: "provider" },
+      { email: account.email, isPrimary: true, source: "provider" },
+    ]);
+    const runtime = createRuntime({
+      service: { listSendAs },
+      cache: {},
+      onCacheChanged: vi.fn(),
+    });
+
+    const identities = await runtime.sendAs(account.id);
+    await runtime.sendAs(account.id);
+
+    expect(identities).toEqual([
+      { email: account.email, isPrimary: true },
+      { email: "team@example.com", name: "Team", isPrimary: false },
+    ]);
+    expect(listSendAs).toHaveBeenCalledOnce();
+  });
+
+  it("retries send-as discovery after a failure", async () => {
+    const listSendAs = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce([{ email: account.email, isPrimary: true, source: "provider" }]);
+    const runtime = createRuntime({
+      service: { listSendAs },
+      cache: {},
+      onCacheChanged: vi.fn(),
+    });
+
+    await expect(runtime.sendAs(account.id)).rejects.toThrow("offline");
+    await expect(runtime.sendAs(account.id)).resolves.toEqual([
+      { email: account.email, isPrimary: true },
+    ]);
+  });
+
   it("adds the quoted message only during the final update of a saved reply", async () => {
     const original = inboxMessage({
       id: "original",

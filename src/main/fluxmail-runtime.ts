@@ -26,6 +26,7 @@ import type {
   ModifyActionInput,
   ScheduledSendInput,
   ScheduledSendResult,
+  SendAsIdentity,
   ThreadListInput,
   ThreadPage,
   UndoSendDelaySeconds,
@@ -76,11 +77,16 @@ const MAX_TIMER_DELAY_MS = 2_147_483_647;
 const MAX_THREAD_PREFETCH = 10;
 const THREAD_PREFETCH_CONCURRENCY = 2;
 const MAX_THREAD_LOAD_ATTEMPTS = 3;
+const SEND_AS_CACHE_MS = 10 * 60_000;
 
 export class FluxmailRuntime {
   private context!: AppContext;
   private fluxmail!: typeof import("fluxmail");
   private initialized = false;
+  private readonly sendAsCache = new Map<
+    string,
+    { expiresAt: number; identities: Promise<SendAsIdentity[]> }
+  >();
   private cacheGeneration = 0;
   private viewRefreshGeneration = 0;
   private googleOAuthAttempt?: Promise<Awaited<ReturnType<typeof runGoogleOAuth>>>;
@@ -396,11 +402,13 @@ export class FluxmailRuntime {
       owner.id,
       { sharedWithAll: false },
     );
+    this.sendAsCache.delete(account.id);
     return toAccountInfo(account, identity.canPermanentlyDelete);
   }
 
   removeAccount(accountId: string): void {
     this.assertStoreCompatible();
+    this.sendAsCache.delete(accountId);
     if (this.latestUndo?.snapshots.some((snapshot) => snapshot.accountId === accountId))
       this.latestUndo = undefined;
     for (const [scheduleId, tracking] of this.scheduledCacheTimers)
@@ -408,6 +416,26 @@ export class FluxmailRuntime {
     this.context.registry.removeAccount(accountId);
     this.options.cache.deleteAccount(accountId);
     this.options.onCacheChanged();
+  }
+
+  /** Addresses the account can send as, primary first. Gmail aliases come from the provider. */
+  async sendAs(accountId: string): Promise<SendAsIdentity[]> {
+    this.requireAccount(accountId);
+    const cached = this.sendAsCache.get(accountId);
+    if (cached && cached.expiresAt > Date.now()) return cached.identities;
+    const identities = this.context.service
+      .listSendAs(accountId)
+      .then((list) =>
+        list
+          .map(({ email, name, isPrimary }) => ({ email, ...(name ? { name } : {}), isPrimary }))
+          .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary)),
+      );
+    const entry = { expiresAt: Date.now() + SEND_AS_CACHE_MS, identities };
+    this.sendAsCache.set(accountId, entry);
+    identities.catch(() => {
+      if (this.sendAsCache.get(accountId) === entry) this.sendAsCache.delete(accountId);
+    });
+    return identities;
   }
 
   async listThreads(rawInput: ThreadListInput, forceProviderSearch = false): Promise<ThreadPage> {
@@ -1154,6 +1182,7 @@ export class FluxmailRuntime {
   async forward(input: {
     accountId: string;
     messageId: string;
+    from?: string;
     to: Address[];
     cc?: Address[];
     bcc?: Address[];
@@ -1193,6 +1222,7 @@ export class FluxmailRuntime {
           )
         : [];
       const payload: SendInput = {
+        ...(input.from ? { from: input.from } : {}),
         to: input.to,
         ...(input.cc?.length ? { cc: input.cc } : {}),
         ...(input.bcc?.length ? { bcc: input.bcc } : {}),
@@ -1628,6 +1658,7 @@ export class FluxmailRuntime {
       if (quotedAttachments.length) attachments = [...(attachments ?? []), ...quotedAttachments];
     }
     return {
+      ...(input.from ? { from: input.from } : {}),
       to: input.to,
       ...(input.cc?.length ? { cc: input.cc } : {}),
       ...(input.bcc?.length ? { bcc: input.bcc } : {}),

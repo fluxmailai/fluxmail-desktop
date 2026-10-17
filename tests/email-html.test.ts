@@ -141,6 +141,29 @@ describe("email HTML security", () => {
     expect(document).toContain('style="white-space: nowrap"');
   });
 
+  it("marks images with pixel widths in table cells", () => {
+    const document = buildEmailDocument(
+      `<table><tr>
+        <td><img src="data:image/png;base64,AA" width="60" height="60"></td>
+        <td><img src="data:image/png;base64,AA" style="width: 48px"></td>
+        <td><img src="data:image/png;base64,AA" width="100%"></td>
+        <td style="width: 100%">Product</td>
+      </tr></table>
+      <img src="data:image/png;base64,AA" width="600">`,
+      {},
+      false,
+    );
+    const images = new DOMParser().parseFromString(document, "text/html").querySelectorAll("img");
+
+    expect([...images].map((image) => image.hasAttribute("data-fluxmail-fixed-width"))).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ]);
+    expect(document).toContain("img[data-fluxmail-fixed-width]{max-width:100vw!important}");
+  });
+
   it("wraps preformatted prose while preserving code formatting", () => {
     const source = buildEmailDocument(
       '<div style="white-space: pre">Prose</div><pre style="white-space: pre">Code</pre><code style="white-space: pre">Inline code</code>',

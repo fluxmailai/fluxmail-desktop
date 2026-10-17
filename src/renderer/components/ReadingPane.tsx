@@ -5,6 +5,7 @@ import {
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -35,6 +36,7 @@ import {
   MailThread,
   MailboxView,
   ModifyActionInput,
+  SendAsIdentity,
   ThreadSummary,
   UndoSendDelaySeconds,
 } from "../../shared/contracts";
@@ -67,6 +69,8 @@ import {
   replyTargets,
 } from "../../shared/reply-recipients";
 import { SendControls } from "./SendControls";
+import { defaultSender, SenderSelect, useSendAsIdentities } from "./SenderSelect";
+import type { MailtoFields } from "../../shared/mailto";
 
 interface Props {
   view: MailboxView;
@@ -78,6 +82,7 @@ interface Props {
   imageRelayAvailable?: boolean;
   onModify(action: ModifyActionInput): Promise<void>;
   onError(message: string): void;
+  onMailto?(mailto: MailtoFields): void;
   onQuickReplyDirtyChange(dirty: boolean): void;
   onDelivery?(delivery: ComposeDelivery): void;
   undoSendDelaySeconds?: UndoSendDelaySeconds;
@@ -116,6 +121,7 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
     imageRelayAvailable = true,
     onModify,
     onError,
+    onMailto,
     onQuickReplyDirtyChange,
     onDelivery,
     undoSendDelaySeconds = 10,
@@ -148,6 +154,11 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
   const threadIdentity = thread ? `${thread.accountId}:${thread.id}` : "";
   const threadIdentityRef = useRef(threadIdentity);
   threadIdentityRef.current = threadIdentity;
+  // Loaded with each conversation so the reply composer opens at its final height.
+  const sendAsIdentities = useSendAsIdentities(
+    useMemo(() => (thread ? [thread.accountId] : []), [thread?.accountId]),
+    threadIdentity,
+  );
   const handleScrollerRef = useCallback((element: HTMLDivElement | null) => {
     setScroller(element);
   }, []);
@@ -337,6 +348,7 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
         setDraftSeed({
           accountId: thread.accountId,
           draftId: draft.draftId,
+          ...(draft.from?.email ? { from: draft.from.email } : {}),
           to: recipientFields?.to ?? formatAddresses(draft.to),
           cc: recipientFields?.cc ?? formatAddresses(draft.cc),
           bcc: recipientFields?.bcc ?? formatAddresses(draft.bcc),
@@ -565,6 +577,7 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
                 activeFindMatch={localActiveFindMatch}
                 onFindMatchCountChange={handleFindMatchCountChange}
                 onError={onError}
+                onMailto={onMailto}
               />
             );
           })}
@@ -629,6 +642,7 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
               key={composer.mode}
               accountId={thread.accountId}
               accountEmail={thread.accountEmail}
+              sendAsIdentities={sendAsIdentities[thread.accountId]}
               threadId={thread.id}
               message={replyTarget}
               mode={composer.mode}
@@ -662,6 +676,7 @@ const MessageCard = memo(function MessageCard({
   activeFindMatch,
   onFindMatchCountChange,
   onError,
+  onMailto,
 }: {
   message: MailMessage;
   blockRemoteImages: boolean;
@@ -671,6 +686,7 @@ const MessageCard = memo(function MessageCard({
   activeFindMatch?: number;
   onFindMatchCountChange(messageId: string, count: number): void;
   onError(message: string): void;
+  onMailto?(mailto: MailtoFields): void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const handleFindMatchCountChange = useCallback(
@@ -739,6 +755,7 @@ const MessageCard = memo(function MessageCard({
             activeFindMatch={activeFindMatch}
             onFindMatchCountChange={handleFindMatchCountChange}
             onError={onError}
+            onMailto={onMailto}
             onTrackingPixelsChange={setTrackingPixels}
           />
           {message.attachments?.length ? (
@@ -780,6 +797,7 @@ const MessageCard = memo(function MessageCard({
 function InlineComposer({
   accountId,
   accountEmail,
+  sendAsIdentities,
   threadId,
   message,
   mode,
@@ -795,6 +813,7 @@ function InlineComposer({
 }: {
   accountId: string;
   accountEmail: string;
+  sendAsIdentities?: SendAsIdentity[];
   threadId: string;
   message: MailMessage;
   mode: InlineComposerMode;
@@ -833,6 +852,10 @@ function InlineComposer({
   const [showCc, setShowCc] = useState(Boolean(initialCc));
   const [showBcc, setShowBcc] = useState(false);
   const [subject, setSubject] = useState(initialSubject);
+  const [from, setFrom] = useState<string>();
+  const senderEmail =
+    from ?? defaultSender(sendAsIdentities, forwarding ? undefined : message)?.email;
+  const showSender = (sendAsIdentities?.length ?? 0) > 1;
   const [html, setHtml] = useState("<p></p>");
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -933,6 +956,7 @@ function InlineComposer({
         const delivery = await window.fluxmail.mail.forward({
           target: { accountId, threadId },
           messageId: message.id,
+          from,
           to: toField.addresses,
           cc: ccField.addresses,
           bcc: bccField.addresses,
@@ -954,6 +978,7 @@ function InlineComposer({
       } else {
         const input = {
           accountId,
+          from,
           to: namesRecipients ? toField.addresses : [],
           ...(namesRecipients && ccField.addresses.length ? { cc: ccField.addresses } : {}),
           ...(namesRecipients && bccField.addresses.length ? { bcc: bccField.addresses } : {}),
@@ -1003,73 +1028,85 @@ function InlineComposer({
         }
       }}
     >
-      {showRecipientFields ? (
+      {showRecipientFields || showSender ? (
         <div className="compose-fields inline-compose-fields">
-          <label className="recipient-row">
-            <span>To</span>
-            <input
-              aria-label="To"
-              autoFocus
-              value={to}
-              onChange={(event) => setTo(event.target.value)}
-              placeholder="name@example.com"
+          {showSender && senderEmail ? (
+            <SenderSelect
+              accounts={[{ id: accountId, email: accountEmail }]}
+              identities={{ [accountId]: sendAsIdentities ?? [] }}
+              value={{ accountId, email: senderEmail }}
+              onChange={(choice) => setFrom(choice.email)}
             />
-            <span className="recipient-field-actions">
-              {!showCc ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowCc(true);
-                    window.requestAnimationFrame(() => ccRef.current?.focus());
-                  }}
-                >
-                  Cc
-                </button>
-              ) : null}
-              {!showBcc ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowBcc(true);
-                    window.requestAnimationFrame(() => bccRef.current?.focus());
-                  }}
-                >
-                  Bcc
-                </button>
-              ) : null}
-            </span>
-          </label>
-          {showCc ? (
-            <label className="recipient-row">
-              <span>Cc</span>
-              <input
-                ref={ccRef}
-                aria-label="Cc"
-                value={cc}
-                onChange={(event) => setCc(event.target.value)}
-              />
-            </label>
           ) : null}
-          {showBcc ? (
-            <label className="recipient-row">
-              <span>Bcc</span>
-              <input
-                ref={bccRef}
-                aria-label="Bcc"
-                value={bcc}
-                onChange={(event) => setBcc(event.target.value)}
-              />
-            </label>
-          ) : null}
-          {forwarding ? (
-            <label>
-              <span>Subject</span>
-              <input
-                aria-label="Subject"
-                value={subject}
-                onChange={(event) => setSubject(event.target.value)}
-              />
-            </label>
+          {showRecipientFields ? (
+            <>
+              <label className="recipient-row">
+                <span>To</span>
+                <input
+                  aria-label="To"
+                  autoFocus
+                  value={to}
+                  onChange={(event) => setTo(event.target.value)}
+                  placeholder="name@example.com"
+                />
+                <span className="recipient-field-actions">
+                  {!showCc ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCc(true);
+                        window.requestAnimationFrame(() => ccRef.current?.focus());
+                      }}
+                    >
+                      Cc
+                    </button>
+                  ) : null}
+                  {!showBcc ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowBcc(true);
+                        window.requestAnimationFrame(() => bccRef.current?.focus());
+                      }}
+                    >
+                      Bcc
+                    </button>
+                  ) : null}
+                </span>
+              </label>
+              {showCc ? (
+                <label className="recipient-row">
+                  <span>Cc</span>
+                  <input
+                    ref={ccRef}
+                    aria-label="Cc"
+                    value={cc}
+                    onChange={(event) => setCc(event.target.value)}
+                  />
+                </label>
+              ) : null}
+              {showBcc ? (
+                <label className="recipient-row">
+                  <span>Bcc</span>
+                  <input
+                    ref={bccRef}
+                    aria-label="Bcc"
+                    value={bcc}
+                    onChange={(event) => setBcc(event.target.value)}
+                  />
+                </label>
+              ) : null}
+              {forwarding ? (
+                <label>
+                  <span>Subject</span>
+                  <input
+                    aria-label="Subject"
+                    value={subject}
+                    onChange={(event) => setSubject(event.target.value)}
+                  />
+                </label>
+              ) : null}
+            </>
           ) : null}
         </div>
       ) : null}

@@ -28,6 +28,7 @@ import {
   mailUndoInputSchema,
   mailUndoResultSchema,
   sendInputSchema,
+  sendAsIdentitySchema,
   sendResultSchema,
   scheduledSendCancelInputSchema,
   scheduledSendCancelResultSchema,
@@ -50,6 +51,8 @@ const api: FluxmailDesktopApi = {
     connectGmail: () => invoke(IPC.accountsConnect, undefined, z.undefined(), accountSchema),
     reconnect: (accountId) => invoke(IPC.accountsReconnect, accountId, z.string(), accountSchema),
     remove: (accountId) => invoke(IPC.accountsRemove, accountId, z.string(), z.void()),
+    sendAs: (accountId) =>
+      invoke(IPC.accountsSendAs, accountId, z.string(), z.array(sendAsIdentitySchema)),
   },
   mail: {
     listThreads: (input) => invoke(IPC.mailList, input, threadListInputSchema, threadPageSchema),
