@@ -35,6 +35,7 @@ import { SettingsDialog } from "./components/SettingsDialog";
 import { Onboarding } from "./components/Onboarding";
 import { FluxmailLogoMark } from "./components/FluxmailLogoMark";
 import { mailboxDeleteAction, mailboxMoveAction } from "./mail-actions";
+import type { MailtoFields } from "../shared/mailto";
 
 const DEFAULT_PAGE_SIZE = 100;
 const DEFAULT_TOAST_DURATION_MS = 5_000;
@@ -485,6 +486,23 @@ export function App() {
       .trackFeature({ feature: "compose", action: "opened", source: "sidebar" })
       .catch(() => undefined);
   }, [accountId, bootstrap?.accounts, prepareReadingNavigation]);
+
+  const openMailto = useCallback(
+    async ({ body, ...fields }: MailtoFields) => {
+      const preferredAccountId = selectedThread?.accountId ?? accountId;
+      const account =
+        bootstrap?.accounts.find((candidate) => candidate.id === preferredAccountId) ??
+        bootstrap?.accounts[0];
+      if (!account) return;
+      const canNavigate = prepareReadingNavigation();
+      if (canNavigate === false || (canNavigate !== true && !(await canNavigate))) return;
+      setComposeSeed({ accountId: account.id, ...fields, initialText: body || undefined });
+      void window.fluxmail.analytics
+        .trackFeature({ feature: "compose", action: "opened", source: "thread_detail" })
+        .catch(() => undefined);
+    },
+    [accountId, bootstrap?.accounts, prepareReadingNavigation, selectedThread?.accountId],
+  );
 
   const changeAccount = useCallback(
     async (nextAccountId?: string) => {
@@ -1039,6 +1057,7 @@ export function App() {
           selectedThread ? modify(action, [selectedThread]) : Promise.resolve()
         }
         onError={showError}
+        onMailto={openMailto}
         onQuickReplyDirtyChange={handleQuickReplyDirtyChange}
         onDelivery={showDelivery}
         undoSendDelaySeconds={bootstrap.preferences.undoSendDelaySeconds}

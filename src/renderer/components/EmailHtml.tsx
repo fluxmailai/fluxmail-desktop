@@ -3,6 +3,7 @@ import DOMPurify from "dompurify";
 import { Image as ImageIcon } from "lucide-react";
 import { MAX_IMAGE_RELAY_URLS_PER_REQUEST, type MailMessage } from "../../shared/contracts";
 import { parseExternalUrl } from "../../shared/external-url";
+import { parseMailtoUrl, type MailtoFields } from "../../shared/mailto";
 import { convertEmailToDarkMode, removeSenderDarkModeCSS } from "../email/convert-to-dark-mode";
 import { collectRemoteImageUrls, rewriteRemoteImageUrls } from "../email/remote-images";
 import { blockTrackingPixels, type TrackingPixelDetail } from "../email/tracking-pixels";
@@ -18,6 +19,7 @@ export function EmailHtml({
   findQuery = "",
   activeFindMatch,
   onError,
+  onMailto,
   onFindMatchCountChange,
   onTrackingPixelsChange,
 }: {
@@ -28,6 +30,8 @@ export function EmailHtml({
   findQuery?: string;
   activeFindMatch?: number;
   onError?(message: string): void;
+  /** Opens mailto links in Fluxmail. Without it, they go to the system mail handler. */
+  onMailto?(mailto: MailtoFields): void;
   onFindMatchCountChange?(count: number): void;
   onTrackingPixelsChange?(trackingPixels: TrackingPixelDetail[]): void;
 }) {
@@ -60,9 +64,11 @@ export function EmailHtml({
   const currentPolicyKeyRef = useRef(policyKey);
   const onFindMatchCountChangeRef = useRef(onFindMatchCountChange);
   const onErrorRef = useRef(onError);
+  const onMailtoRef = useRef(onMailto);
   currentPolicyKeyRef.current = policyKey;
   onFindMatchCountChangeRef.current = onFindMatchCountChange;
   onErrorRef.current = onError;
+  onMailtoRef.current = onMailto;
   const currentRemoteImages =
     remoteImages.policyKey === policyKey
       ? remoteImages
@@ -140,7 +146,10 @@ export function EmailHtml({
       if (!link) return;
       event.preventDefault();
       const href = link.getAttribute("href");
-      if (href)
+      if (!href) return;
+      const mailto = parseMailtoUrl(href);
+      if (mailto && onMailtoRef.current) onMailtoRef.current(mailto);
+      else
         void window.fluxmail.system
           .openExternal(href)
           .catch((error) =>

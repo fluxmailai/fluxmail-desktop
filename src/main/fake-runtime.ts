@@ -75,7 +75,9 @@ const e2eMessages: Message[] = [
     subject: "Receipt for Tuesday",
     date: todayAt(22),
     snippet: "Thanks for shopping with us.",
-    body: { html: "<p>Thanks for shopping with us.</p>" },
+    body: {
+      html: '<p>Thanks for shopping with us.</p><p><a href="mailto:help@market.test?subject=Receipt%20question">Contact us</a></p>',
+    },
     flags: { read: true, starred: true, draft: false },
     attachments: [
       {

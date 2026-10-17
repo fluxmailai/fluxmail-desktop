@@ -66,6 +66,7 @@ import {
   replyTargets,
 } from "../../shared/reply-recipients";
 import { SendControls } from "./SendControls";
+import type { MailtoFields } from "../../shared/mailto";
 
 interface Props {
   view: MailboxView;
@@ -77,6 +78,7 @@ interface Props {
   imageRelayAvailable?: boolean;
   onModify(action: ModifyActionInput): Promise<void>;
   onError(message: string): void;
+  onMailto?(mailto: MailtoFields): void;
   onQuickReplyDirtyChange(dirty: boolean): void;
   onDelivery?(delivery: ComposeDelivery): void;
   undoSendDelaySeconds?: UndoSendDelaySeconds;
@@ -109,6 +111,7 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
     imageRelayAvailable = true,
     onModify,
     onError,
+    onMailto,
     onQuickReplyDirtyChange,
     onDelivery,
     undoSendDelaySeconds = 10,
@@ -538,6 +541,7 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
                   )
                 }
                 onError={onError}
+                onMailto={onMailto}
               />
             );
           })}
@@ -635,6 +639,7 @@ function MessageCard({
   activeFindMatch,
   onFindMatchCountChange,
   onError,
+  onMailto,
 }: {
   message: MailMessage;
   blockRemoteImages: boolean;
@@ -644,6 +649,7 @@ function MessageCard({
   activeFindMatch?: number;
   onFindMatchCountChange(count: number): void;
   onError(message: string): void;
+  onMailto?(mailto: MailtoFields): void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const [trackingPixels, setTrackingPixels] = useState<TrackingPixelDetail[]>([]);
@@ -713,6 +719,7 @@ function MessageCard({
             activeFindMatch={activeFindMatch}
             onFindMatchCountChange={onFindMatchCountChange}
             onError={onError}
+            onMailto={onMailto}
             onTrackingPixelsChange={setTrackingPixels}
           />
           {message.attachments?.length ? (
