@@ -22,7 +22,7 @@ _These artifacts use Fluxmail's self-signed certificate and have not been notari
 - Keep line breaks and blank lines in sent email so it looks the same to recipients as it did in the composer ([#73](https://github.com/fluxmailai/fluxmail-desktop/pull/73))
 - Show earlier messages in a conversation after sending a reply with undo send turned on ([#70](https://github.com/fluxmailai/fluxmail-desktop/pull/70))
 - Keep text that the sender marked as non-wrapping, such as newsletter headings, on one line ([#71](https://github.com/fluxmailai/fluxmail-desktop/pull/71))
-- Keep the retry delay for a scheduled send that failed when Desktop restarts ([fluxmail#125](https://github.com/fluxmailai/fluxmail/pull/125))
+- Keep the retry delay of a failed scheduled send when Desktop restarts ([fluxmail#125](https://github.com/fluxmailai/fluxmail/pull/125))
 - Show IMAP search results from the folders that finished when a later folder times out ([fluxmail#145](https://github.com/fluxmailai/fluxmail/pull/145))
 - Ask to reconnect a Gmail account that no longer has Gmail permission ([fluxmail#145](https://github.com/fluxmailai/fluxmail/pull/145))
 - Download Outlook attachments that Microsoft reports as larger than they are, and read Outlook inline attachment details correctly ([fluxmail#111](https://github.com/fluxmailai/fluxmail/pull/111))
