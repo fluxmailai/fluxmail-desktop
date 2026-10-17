@@ -781,6 +781,55 @@ describe("MailCache", () => {
     cache.close();
   });
 
+  it("keeps a hydrated thread when a listing omits attachment metadata", () => {
+    const cache = createCache();
+    const attachment = {
+      id: "attachment-1",
+      filename: "plan.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 1200,
+    };
+    const opened = message({
+      id: "opened",
+      threadId: "thread-a",
+      attachments: [attachment],
+      body: { text: "body" },
+    });
+    cache.putThread(primary, { id: "thread-a", subject: opened.subject, messages: [opened] });
+
+    const { attachments: _attachments, body: _body, ...listed } = opened;
+    cache.putMessages(primary, [listed]);
+
+    expect(cache.getThread(primary.id, "thread-a")?.messages[0]?.body?.text).toBe("body");
+    expect(cache.listThreads({ view: "inbox", offset: 0, limit: 20 })[0]?.hasAttachments).toBe(
+      true,
+    );
+
+    cache.putMessages(primary, [{ ...listed, flags: { ...listed.flags, read: true } }]);
+    expect(cache.getThread(primary.id, "thread-a")).toBeUndefined();
+    cache.close();
+  });
+
+  it("keeps a hydrated thread when a listing orders message fields differently", () => {
+    const cache = createCache();
+    const { flags, ...rest } = message({ id: "opened", threadId: "thread-a" });
+    const opened = {
+      attachments: [
+        { id: "attachment-1", filename: "plan.pdf", mimeType: "application/pdf", sizeBytes: 1 },
+      ],
+      flags,
+      ...rest,
+      body: { text: "body" },
+    };
+    cache.putThread(primary, { id: "thread-a", subject: opened.subject, messages: [opened] });
+
+    const { attachments: _attachments, body: _body, ...listed } = opened;
+    cache.putMessages(primary, [listed]);
+
+    expect(cache.getThread(primary.id, "thread-a")?.messages[0]?.body?.text).toBe("body");
+    cache.close();
+  });
+
   it("removes a deleted draft from summaries and hydrated bodies", () => {
     const cache = createCache();
     const draft = message({

@@ -973,6 +973,225 @@ describe("FluxmailRuntime conversation mutations", () => {
     expect(getThread).toHaveBeenCalledTimes(3);
   });
 
+  it("marks an opened thread read without refetching it or its folders", async () => {
+    const cache = createCache();
+    const first = inboxMessage({ id: "message-1", threadId: "thread-1", body: { text: "one" } });
+    const second = inboxMessage({ id: "message-2", threadId: "thread-1", body: { text: "two" } });
+    cache.putThread(account, { id: "thread-1", subject: first.subject, messages: [first, second] });
+    const getThread = vi.fn();
+    const listFolders = vi.fn(async () => []);
+    const modify = vi.fn(async (_accountId: string, ids: string[]) => ({ succeededIds: ids }));
+    const runtime = createRuntimeWithCache({
+      cache,
+      service: { getThread, listFolders, modify },
+      onCacheChanged: vi.fn(),
+    });
+
+    await runtime.modify(
+      [{ accountId: account.id, threadId: "thread-1" }],
+      { type: "markRead" },
+      false,
+    );
+
+    expect(modify).toHaveBeenCalledWith(account.id, ["message-1", "message-2"], "markRead");
+    expect(getThread).not.toHaveBeenCalled();
+    expect(listFolders).not.toHaveBeenCalled();
+    expect(cache.snapshotThread(account.id, "thread-1")).toMatchObject({ unread: 0 });
+    expect(
+      cache.getThread(account.id, "thread-1")?.messages.map((message) => message.flags.read),
+    ).toEqual([true, true]);
+    expect(cache.getThread(account.id, "thread-1")?.messages[1]?.body?.text).toBe("two");
+  });
+
+  it("refetches a thread when the provider did not confirm every flag change", async () => {
+    const cache = createCache();
+    const first = inboxMessage({ id: "message-1", threadId: "thread-1" });
+    const second = inboxMessage({ id: "message-2", threadId: "thread-1" });
+    cache.putThread(account, { id: "thread-1", subject: first.subject, messages: [first, second] });
+    const getThread = vi.fn(async () => ({
+      id: "thread-1",
+      subject: first.subject,
+      messages: [{ ...first, flags: { ...first.flags, read: true } }, second],
+    }));
+    const modify = vi.fn(async () => ({ succeededIds: ["message-1"] }));
+    const runtime = createRuntimeWithCache({
+      cache,
+      service: { getThread, listFolders: vi.fn(async () => []), modify },
+      onCacheChanged: vi.fn(),
+    });
+
+    await runtime.modify(
+      [{ accountId: account.id, threadId: "thread-1" }],
+      { type: "markRead" },
+      false,
+    );
+
+    expect(getThread).toHaveBeenCalledTimes(1);
+    expect(cache.snapshotThread(account.id, "thread-1")).toMatchObject({ unread: 1 });
+  });
+
+  it("fetches a thread's message ids when only a listing of it is cached", async () => {
+    const cache = createCache();
+    const older = inboxMessage({
+      id: "message-1",
+      threadId: "thread-1",
+      date: "2026-05-01T09:00:00.000Z",
+    });
+    const newest = inboxMessage({ id: "message-2", threadId: "thread-1" });
+    cache.putMessages(account, [newest]);
+    const getThread = vi.fn(async () => ({
+      id: "thread-1",
+      subject: newest.subject,
+      messages: [older, newest],
+    }));
+    const modify = vi.fn(async (_accountId: string, ids: string[]) => ({ succeededIds: ids }));
+    const runtime = createRuntimeWithCache({
+      cache,
+      service: { getThread, listFolders: vi.fn(async () => []), modify },
+      onCacheChanged: vi.fn(),
+    });
+
+    await runtime.modify(
+      [{ accountId: account.id, threadId: "thread-1" }],
+      { type: "markRead" },
+      false,
+    );
+
+    expect(getThread).toHaveBeenCalledTimes(1);
+    expect(modify).toHaveBeenCalledWith(account.id, ["message-1", "message-2"], "markRead");
+  });
+
+  it("offers undo for a star after one thread fetch", async () => {
+    const cache = createCache();
+    const remote = inboxMessage({ id: "message-1", threadId: "thread-1" });
+    cache.putMessages(account, [structuredClone(remote)]);
+    const getThread = vi.fn(async () => ({
+      id: remote.threadId,
+      subject: remote.subject,
+      messages: [structuredClone(remote)],
+    }));
+    const runtime = createRuntimeWithCache({
+      cache,
+      service: {
+        getThread,
+        listFolders: vi.fn(async () => []),
+        modify: vi.fn(async (_accountId: string, ids: string[]) => ({ succeededIds: ids })),
+      },
+      onCacheChanged: vi.fn(),
+    });
+
+    const result = await runtime.modify([{ accountId: account.id, threadId: "thread-1" }], {
+      type: "star",
+    });
+
+    expect(result.undoToken).toBeTruthy();
+    expect(getThread).toHaveBeenCalledTimes(1);
+    expect(cache.snapshotThread(account.id, "thread-1")).toMatchObject({ starred: 1 });
+  });
+
+  it("prefetches uncached threads and shares the request with an open", async () => {
+    const cache = createCache();
+    const first = inboxMessage({ id: "message-1", threadId: "thread-1", body: { text: "one" } });
+    const second = inboxMessage({ id: "message-2", threadId: "thread-2", body: { text: "two" } });
+    cache.putThread(account, { id: "thread-1", subject: first.subject, messages: [first] });
+    let finish!: () => void;
+    const getThread = vi.fn(
+      () =>
+        new Promise<{ id: string; subject: string; messages: Message[] }>((resolve) => {
+          finish = () => resolve({ id: "thread-2", subject: second.subject, messages: [second] });
+        }),
+    );
+    const runtime = createRuntimeWithCache({
+      cache,
+      service: { getThread },
+      onCacheChanged: vi.fn(),
+    });
+
+    runtime.prefetchThreads([
+      { accountId: account.id, threadId: "thread-1" },
+      { accountId: account.id, threadId: "thread-2" },
+      { accountId: "removed-account", threadId: "thread-3" },
+    ]);
+    const opened = runtime.getThread(account.id, "thread-2");
+    finish();
+
+    await expect(opened).resolves.toMatchObject({ messages: [{ body: { text: "two" } }] });
+    expect(getThread).toHaveBeenCalledTimes(1);
+    expect(getThread).toHaveBeenCalledWith(account.id, "thread-2");
+    await vi.waitFor(() => expect(cache.hasThreadBody(account.id, "thread-2")).toBe(true));
+  });
+
+  it("discards a prefetch that a mailbox refresh outdated", async () => {
+    const cache = createCache();
+    const first = inboxMessage({ id: "message-1", threadId: "thread-1" });
+    const reply = inboxMessage({ id: "message-2", threadId: "thread-1" });
+    cache.putMessages(account, [first]);
+    let finish!: () => void;
+    const getThread = vi.fn(
+      () =>
+        new Promise<{ id: string; subject: string; messages: Message[] }>((resolve) => {
+          finish = () => resolve({ id: "thread-1", subject: first.subject, messages: [first] });
+        }),
+    );
+    const runtime = createRuntimeWithCache({
+      cache,
+      service: { getThread },
+      onCacheChanged: vi.fn(),
+    });
+
+    runtime.prefetchThreads([{ accountId: account.id, threadId: "thread-1" }]);
+    cache.putMessages(account, [reply]);
+    finish();
+
+    await vi.waitFor(() => expect(getThread).toHaveBeenCalledTimes(1));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(cache.messageIds(account.id, "thread-1").sort()).toEqual(["message-1", "message-2"]);
+    expect(cache.hasThreadBody(account.id, "thread-1")).toBe(false);
+  });
+
+  it("does not open a thread from a prefetch that started before a mutation", async () => {
+    const cache = createCache();
+    const unread = inboxMessage({ id: "message-1", threadId: "thread-1" });
+    const read = { ...unread, flags: { ...unread.flags, read: true } };
+    cache.putMessages(account, [unread]);
+    let finishPrefetch!: () => void;
+    const getThread = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishPrefetch = () =>
+              resolve({ id: "thread-1", subject: unread.subject, messages: [unread] });
+          }),
+      )
+      .mockResolvedValueOnce({ id: "thread-1", subject: unread.subject, messages: [unread] })
+      .mockResolvedValueOnce({ id: "thread-1", subject: unread.subject, messages: [read] });
+    const runtime = createRuntimeWithCache({
+      cache,
+      service: {
+        getThread,
+        listFolders: vi.fn(async () => []),
+        modify: vi.fn(async (_accountId: string, ids: string[]) => ({ succeededIds: ids })),
+      },
+      onCacheChanged: vi.fn(),
+    });
+
+    runtime.prefetchThreads([{ accountId: account.id, threadId: "thread-1" }]);
+    await runtime.modify(
+      [{ accountId: account.id, threadId: "thread-1" }],
+      { type: "markRead" },
+      false,
+    );
+    const opened = runtime.getThread(account.id, "thread-1");
+    finishPrefetch();
+
+    await expect(opened).resolves.toMatchObject({ messages: [{ flags: { read: true } }] });
+    expect(getThread).toHaveBeenCalledTimes(3);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(cache.snapshotThread(account.id, "thread-1")).toMatchObject({ unread: 0 });
+    expect(cache.getThread(account.id, "thread-1")?.messages[0]?.flags.read).toBe(true);
+  });
+
   it("undoes only the most recent action and consumes its token", async () => {
     const cache = createCache();
     const remote = inboxMessage({ id: "message-1", threadId: "thread-1" });

@@ -386,6 +386,8 @@ export class FakeFluxmailRuntime {
     };
   }
 
+  prefetchThreads(_targets: Array<{ accountId: string; threadId: string }>): void {}
+
   async modify(
     targets: Array<{ threadId: string }>,
     action: ModifyActionInput,

@@ -70,6 +70,8 @@ const CACHE_SCHEMA_VERSION = 6;
 export class MailCache {
   readonly hasCachedMail: boolean;
   private readonly db: Database.Database;
+  /** Counts writes that may have dropped or replaced a thread's hydrated conversation. */
+  private readonly threadRevisions = new Map<string, number>();
 
   constructor(
     dataDir: string,
@@ -378,17 +380,25 @@ export class MailCache {
             threadIds.add(cached.thread_id);
           }
         }
-        const { body: _body, ...metadata } = message;
-        const payload = JSON.stringify(metadata);
         const existing = existingMessage.get(account.id, message.id) as
           | { thread_id: string; payload_json: string; date: string }
           | undefined;
+        const { body: _body, ...metadata } = message;
+        // Mailbox listings omit attachment metadata that an opened thread includes. A message's
+        // attachments never change, so keep the ones already cached instead of treating the
+        // listing as a change that discards the hydrated thread body.
+        if (!("attachments" in metadata) && existing) {
+          const cached = JSON.parse(existing.payload_json) as Partial<Message>;
+          if (cached.attachments) metadata.attachments = cached.attachments;
+        }
+        const payload = JSON.stringify(metadata);
         put.run(account.id, message.id, message.threadId, payload, message.date);
         if (
           options.invalidateBodies ||
           !existing ||
           existing.thread_id !== message.threadId ||
-          existing.payload_json !== payload ||
+          (existing.payload_json !== payload &&
+            canonicalJson(JSON.parse(existing.payload_json)) !== canonicalJson(metadata)) ||
           existing.date !== message.date
         ) {
           if (existing) threadIds.add(existing.thread_id);
@@ -481,6 +491,11 @@ export class MailCache {
         .run(accountId, threadId);
       return undefined;
     }
+  }
+
+  /** Changes whenever a mailbox write could make an in-flight conversation fetch stale. */
+  threadRevision(accountId: string, threadId: string): number {
+    return this.threadRevisions.get(`${accountId}:${threadId}`) ?? 0;
   }
 
   hasThreadBody(accountId: string, threadId: string): boolean {
@@ -787,6 +802,59 @@ export class MailCache {
           .prepare("DELETE FROM thread_bodies WHERE account_id = ? AND thread_id = ?")
           .run(state.accountId, state.threadId);
       }
+    })();
+    return true;
+  }
+
+  /** Records flag changes the provider confirmed, without refetching the conversation. */
+  applyMessageFlagsIfOwned(
+    account: AccountInfo,
+    threadId: string,
+    messageIds: string[],
+    flags: Partial<Message["flags"]>,
+    mutationId: string,
+  ): boolean {
+    if (!this.ownsMutation(account.id, threadId, mutationId)) return false;
+    const changed = new Set(messageIds);
+    const withFlags = <T extends Pick<Message, "flags">>(message: T): T => ({
+      ...message,
+      flags: { ...message.flags, ...flags },
+    });
+    const rows = this.db
+      .prepare(
+        "SELECT message_id, payload_json FROM messages WHERE account_id = ? AND thread_id = ?",
+      )
+      .all(account.id, threadId) as Array<{ message_id: string; payload_json: string }>;
+    const update = this.db.prepare(
+      "UPDATE messages SET payload_json = ? WHERE account_id = ? AND message_id = ?",
+    );
+    this.db.transaction(() => {
+      for (const row of rows)
+        if (changed.has(row.message_id))
+          update.run(
+            JSON.stringify(withFlags(JSON.parse(row.payload_json) as Message)),
+            account.id,
+            row.message_id,
+          );
+      const body = this.getThread(account.id, threadId);
+      if (body) {
+        const encrypted = this.cipher.encrypt(
+          JSON.stringify({
+            ...body,
+            messages: body.messages.map((message) =>
+              changed.has(message.id) ? withFlags(message) : message,
+            ),
+          }),
+        );
+        if (encrypted)
+          this.db
+            .prepare(
+              "UPDATE thread_bodies SET encrypted_payload = ? WHERE account_id = ? AND thread_id = ?",
+            )
+            .run(encrypted, account.id, threadId);
+        else this.invalidateThreadBody(account.id, threadId);
+      }
+      this.rebuildThread(account, threadId, mutationId);
     })();
     return true;
   }
@@ -1256,12 +1324,12 @@ export class MailCache {
     this.db
       .prepare("DELETE FROM messages WHERE account_id = ? AND thread_id = ?")
       .run(accountId, threadId);
-    this.db
-      .prepare("DELETE FROM thread_bodies WHERE account_id = ? AND thread_id = ?")
-      .run(accountId, threadId);
+    this.invalidateThreadBody(accountId, threadId);
   }
 
   private invalidateThreadBody(accountId: string, threadId: string): void {
+    const key = `${accountId}:${threadId}`;
+    this.threadRevisions.set(key, (this.threadRevisions.get(key) ?? 0) + 1);
     this.db
       .prepare("DELETE FROM thread_bodies WHERE account_id = ? AND thread_id = ?")
       .run(accountId, threadId);
@@ -1377,6 +1445,17 @@ function addScheduledDraftExclusion(
     JSON.stringify(
       scheduledDrafts.map((draft) => JSON.stringify([draft.accountId, draft.draftId])),
     ),
+  );
+}
+
+/** Serializes with sorted object keys so payloads that differ only in key order compare equal. */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, nested: unknown) =>
+    nested && typeof nested === "object" && !Array.isArray(nested)
+      ? Object.fromEntries(
+          Object.entries(nested).sort(([left], [right]) => (left < right ? -1 : 1)),
+        )
+      : nested,
   );
 }
 

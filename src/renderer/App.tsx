@@ -39,6 +39,7 @@ import type { MailtoFields } from "../shared/mailto";
 
 const DEFAULT_PAGE_SIZE = 100;
 const DEFAULT_TOAST_DURATION_MS = 5_000;
+const THREAD_PREFETCH_DELAY_MS = 300;
 
 interface DeliveryNotice {
   id: string;
@@ -463,6 +464,16 @@ export function App() {
       unsubscribe();
     };
   }, [closeReadingDraft, composeSeed, loadBootstrap, loadThreads, selectedThread, settingsOpen]);
+
+  const selectedThreadKey = selectedThread ? threadKey(selectedThread) : undefined;
+  useEffect(() => {
+    if (!threads.length) return;
+    const timer = window.setTimeout(() => {
+      const targets = threadsToPrefetch(threads, selectedThreadKey);
+      if (targets.length) void window.fluxmail.mail.prefetchThreads(targets).catch(() => undefined);
+    }, THREAD_PREFETCH_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [selectedThreadKey, threads]);
 
   useEffect(
     () => () => {
@@ -1219,6 +1230,18 @@ export async function loadThreadPages(
     syncing: false,
     ...(nextCursor ? { nextCursor } : {}),
   };
+}
+
+/** Conversations near the open one, which the reader is most likely to open next. */
+export function threadsToPrefetch(
+  threads: ThreadSummary[],
+  selectedKey?: string,
+): Array<{ accountId: string; threadId: string }> {
+  const index = selectedKey ? threads.findIndex((thread) => threadKey(thread) === selectedKey) : -1;
+  const nearby = index < 0 ? threads.slice(0, 8) : threads.slice(Math.max(0, index - 2), index + 6);
+  return nearby
+    .filter((thread) => threadKey(thread) !== selectedKey)
+    .map((thread) => ({ accountId: thread.accountId, threadId: thread.id }));
 }
 
 export function threadKey(

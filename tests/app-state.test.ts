@@ -11,6 +11,8 @@ import {
   shouldClearSelectedThread,
   shouldForceProviderSearchAfterMutation,
   shouldOptimisticallyRemoveFromView,
+  threadKey,
+  threadsToPrefetch,
 } from "../src/renderer/App";
 import { parseAddressField, replyRecipient } from "../src/renderer/components/ComposeDialog";
 import {
@@ -20,6 +22,27 @@ import {
   mailboxMoveLabel,
 } from "../src/renderer/mail-actions";
 import type { ThreadPage, ThreadSummary } from "../src/shared/contracts";
+
+describe("thread prefetching", () => {
+  const threads = Array.from({ length: 12 }, (_, index) => thread(`thread-${index}`));
+  const ids = (targets: Array<{ threadId: string }>) => targets.map((target) => target.threadId);
+
+  it("prefetches the top of the list before anything is open", () => {
+    expect(ids(threadsToPrefetch(threads))).toEqual(threads.slice(0, 8).map((item) => item.id));
+  });
+
+  it("prefetches the conversations around the open one", () => {
+    expect(ids(threadsToPrefetch(threads, threadKey(threads[5]!)))).toEqual([
+      "thread-3",
+      "thread-4",
+      "thread-6",
+      "thread-7",
+      "thread-8",
+      "thread-9",
+      "thread-10",
+    ]);
+  });
+});
 
 describe("mail view optimistic updates", () => {
   it("removes archived Inbox threads immediately", () => {

@@ -1347,6 +1347,7 @@ function installApi(
           totalCount: visibleThreads.length,
           syncing: false,
         })),
+        prefetchThreads: vi.fn(async () => undefined),
         search: vi.fn(async () => ({
           items: visibleThreads,
           totalCount: visibleThreads.length,

@@ -37,6 +37,7 @@ import {
   telemetryStatusSchema,
   threadListInputSchema,
   threadPageSchema,
+  threadPrefetchInputSchema,
   threadSchema,
   threadTargetSchema,
   undoSendDelaySecondsSchema,
@@ -57,6 +58,8 @@ const api: FluxmailDesktopApi = {
     listThreads: (input) => invoke(IPC.mailList, input, threadListInputSchema, threadPageSchema),
     search: (input) => invoke(IPC.mailSearch, input, threadListInputSchema, threadPageSchema),
     getThread: (target) => invoke(IPC.mailThread, target, threadTargetSchema, threadSchema),
+    prefetchThreads: (targets) =>
+      invoke(IPC.mailPrefetch, targets, threadPrefetchInputSchema, z.undefined()),
     modify: (input) => invoke(IPC.mailModify, input, mailModifyInputSchema, mailModifyResultSchema),
     undo: (input) => invoke(IPC.mailUndo, input, mailUndoInputSchema, mailUndoResultSchema),
     forward: (input) =>
