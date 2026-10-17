@@ -365,6 +365,7 @@ function buildEmailContent(
   normalizePreformattedText(document);
   const trackingReport = blockTrackingPixels(document);
   for (const image of document.querySelectorAll("img")) {
+    keepTableImageWidth(image);
     const source = image.getAttribute("src") || "";
     if (source.startsWith("cid:")) {
       const cid = source.slice(4).replace(/^<|>$/g, "");
@@ -729,6 +730,17 @@ export function applyContentScaling(document: Document, containerWidth: number):
   const scale = containerWidth / naturalWidth;
   root.style.transform = `scale(${scale})`;
   return scale;
+}
+
+// The frame caps images at max-width:100%, and Chromium lets a percentage max-width shrink an
+// image in an auto-sized table cell to almost nothing. A pixel floor keeps the sender's width
+// while still fitting the frame.
+function keepTableImageWidth(image: HTMLImageElement): void {
+  if (image.style.minWidth || !image.closest("td, th")) return;
+  const width = (image.style.width || image.getAttribute("width") || "")
+    .trim()
+    .match(/^(\d+(?:\.\d+)?)(?:px)?$/i)?.[1];
+  if (width && Number(width) > 0) image.style.minWidth = `min(${width}px, 100vw)`;
 }
 
 function normalizePreformattedText(document: Document): void {

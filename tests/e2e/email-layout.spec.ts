@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { _electron as electron, expect, test } from "@playwright/test";
+import { _electron as electron, expect, test, type Page } from "@playwright/test";
 
 // The divider cells each request 50% of the width; the heading's nowrap supplies its minimum width.
 const digestHtml = `<table style="width:100%;max-width:600px;margin:0 auto">
@@ -18,7 +18,13 @@ const digestHtml = `<table style="width:100%;max-width:600px;margin:0 auto">
   </div></td></tr>
 </table>`;
 
-test("keeps newsletter divider headings on one line", async () => {
+// Shopify order emails place a fixed-size image beside a width:100% description cell.
+const orderHtml = `<table><tr>
+  <td><img alt="Tote bag" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'/%3E" width="60" height="60"></td>
+  <td style="width:100%">[Free Gift] UREVO Waterproof Magnetic Tote Bag × 1</td>
+</tr></table>`;
+
+async function withEmail(html: string, check: (page: Page) => Promise<void>): Promise<void> {
   const dataDirectory = mkdtempSync(path.join(tmpdir(), "fluxmail-email-layout-e2e-"));
   const electronApp = await electron.launch({
     args: ["--use-mock-keychain", process.cwd()],
@@ -43,7 +49,7 @@ test("keeps newsletter divider headings on one line", async () => {
         threadId: welcome.id,
       });
     });
-    thread.messages[0].body = { html: digestHtml };
+    thread.messages[0].body = { html };
     await electronApp.evaluate(({ ipcMain }, fixture) => {
       ipcMain.removeHandler("fluxmail:mail:thread");
       ipcMain.handle("fluxmail:mail:thread", () => fixture);
@@ -53,7 +59,15 @@ test("keeps newsletter divider headings on one line", async () => {
       .filter({ hasText: "Welcome to Fluxmail" })
       .locator(".thread-open")
       .click();
+    await check(page);
+  } finally {
+    await electronApp.close();
+    rmSync(dataDirectory, { recursive: true, force: true });
+  }
+}
 
+test("keeps newsletter divider headings on one line", async () => {
+  await withEmail(digestHtml, async (page) => {
     const frame = page.locator('iframe[title="Email message"]');
     const heading = page
       .frameLocator('iframe[title="Email message"]')
@@ -73,8 +87,15 @@ test("keeps newsletter divider headings on one line", async () => {
         }),
       ).toBe(true);
     }
-  } finally {
-    await electronApp.close();
-    rmSync(dataDirectory, { recursive: true, force: true });
-  }
+  });
+});
+
+test("keeps the declared size of product images beside full-width cells", async () => {
+  await withEmail(orderHtml, async (page) => {
+    const image = page.frameLocator('iframe[title="Email message"]').getByRole("img", {
+      name: "Tote bag",
+    });
+    await expect(image).toBeVisible();
+    expect(await image.evaluate((element) => element.getBoundingClientRect().width)).toBe(60);
+  });
 });
