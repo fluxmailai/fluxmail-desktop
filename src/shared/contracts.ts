@@ -24,6 +24,13 @@ export const accountSchema = z.object({
 });
 export type AccountInfo = z.infer<typeof accountSchema>;
 
+export const sendAsIdentitySchema = z.object({
+  email: z.string(),
+  name: z.string().optional(),
+  isPrimary: z.boolean(),
+});
+export type SendAsIdentity = z.infer<typeof sendAsIdentitySchema>;
+
 export const folderSchema = z.object({
   accountId: z.string(),
   id: z.string(),
@@ -201,6 +208,7 @@ export type DraftRecipientFields = z.infer<typeof draftRecipientFieldsSchema>;
 export const composeInputSchema = z.object({
   accountId: z.string(),
   draftId: z.string().optional(),
+  from: z.string().email().optional(),
   to: z.array(addressSchema),
   cc: z.array(addressSchema).optional(),
   bcc: z.array(addressSchema).optional(),
@@ -227,6 +235,7 @@ export const mailForwardInputSchema = z
   .object({
     target: threadTargetSchema,
     messageId: z.string(),
+    from: z.string().email().optional(),
     to: z.array(addressSchema),
     cc: z.array(addressSchema).optional(),
     bcc: z.array(addressSchema).optional(),
@@ -461,6 +470,7 @@ export interface FluxmailDesktopApi {
     connectGmail(): Promise<AccountInfo>;
     reconnect(accountId: string): Promise<AccountInfo>;
     remove(accountId: string): Promise<void>;
+    sendAs(accountId: string): Promise<SendAsIdentity[]>;
   };
   mail: {
     listThreads(input: ThreadListInput): Promise<ThreadPage>;
@@ -475,6 +485,7 @@ export interface FluxmailDesktopApi {
     forward(input: {
       target: z.infer<typeof threadTargetSchema>;
       messageId: string;
+      from?: string;
       to: Address[];
       cc?: Address[];
       bcc?: Address[];
@@ -551,6 +562,7 @@ export const IPC = {
   accountsConnect: "fluxmail:accounts:connect",
   accountsReconnect: "fluxmail:accounts:reconnect",
   accountsRemove: "fluxmail:accounts:remove",
+  accountsSendAs: "fluxmail:accounts:send-as",
   mailList: "fluxmail:mail:list",
   mailSearch: "fluxmail:mail:search",
   mailThread: "fluxmail:mail:thread",
