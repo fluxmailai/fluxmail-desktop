@@ -10,10 +10,12 @@ import {
   X,
 } from "lucide-react";
 import type {
+  AccountInfo,
   AppearancePreference,
   BootstrapState,
   UndoSendDelaySeconds,
 } from "../../shared/contracts";
+import { AccountSetupDialog, type AccountSetupProvider } from "./AccountSetupDialog";
 import { IconButton, MenuButton, SelectionCheckbox } from "./Controls";
 
 const UNDO_SEND_OPTIONS = [
@@ -50,6 +52,10 @@ interface Props {
 export function SettingsDialog({ state, onState, onClose, onError }: Props) {
   const [busy, setBusy] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [accountSetup, setAccountSetup] = useState<{
+    provider: AccountSetupProvider;
+    reconnectAccountId?: string;
+  }>();
   const [appearanceBusy, setAppearanceBusy] = useState(false);
   const [dockBadgeBusy, setDockBadgeBusy] = useState(false);
   const [undoSendBusy, setUndoSendBusy] = useState(false);
@@ -89,16 +95,35 @@ export function SettingsDialog({ state, onState, onClose, onError }: Props) {
       setBusy(false);
     }
   };
-  const connectAccount = async () => {
+  const connectGmail = async (accountId?: string) => {
     if (connecting) return;
     setConnecting(true);
     try {
-      await window.fluxmail.accounts.connectGmail();
+      if (accountId) await window.fluxmail.accounts.reconnect(accountId);
+      else await window.fluxmail.accounts.connect("gmail");
       onState(await window.fluxmail.bootstrap());
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Could not connect Gmail.");
+      onError(
+        error instanceof Error
+          ? error.message
+          : accountId
+            ? "Could not reconnect."
+            : "Could not connect Gmail.",
+      );
     } finally {
       setConnecting(false);
+    }
+  };
+  const reconnectAccount = (account: AccountInfo) => {
+    if (account.provider === "gmail") void connectGmail(account.id);
+    else setAccountSetup({ provider: account.provider, reconnectAccountId: account.id });
+  };
+  const finishAccountSetup = async () => {
+    setAccountSetup(undefined);
+    try {
+      onState(await window.fluxmail.bootstrap());
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Could not refresh accounts.");
     }
   };
   const updateAppearance = async (appearance: AppearancePreference) => {
@@ -499,15 +524,8 @@ export function SettingsDialog({ state, onState, onClose, onError }: Props) {
                   <span className="account-actions">
                     <IconButton
                       label="Reconnect account"
-                      onClick={() =>
-                        void window.fluxmail.accounts
-                          .reconnect(account.id)
-                          .catch((error) =>
-                            onError(
-                              error instanceof Error ? error.message : "Could not reconnect.",
-                            ),
-                          )
-                      }
+                      disabled={connecting}
+                      onClick={() => reconnectAccount(account)}
                     >
                       <RefreshCw size={16} />
                     </IconButton>
@@ -545,13 +563,29 @@ export function SettingsDialog({ state, onState, onClose, onError }: Props) {
                 </div>
               ))}
             </div>
-            <button
-              className="secondary-button"
-              disabled={connecting}
-              onClick={() => void connectAccount()}
-            >
-              {connecting ? "Waiting for Google..." : "Add Gmail account"}
-            </button>
+            <div className="settings-add-account">
+              <button
+                className="secondary-button"
+                disabled={connecting}
+                onClick={() => void connectGmail()}
+              >
+                {connecting ? "Waiting for Google..." : "Add Gmail"}
+              </button>
+              <button
+                className="secondary-button"
+                disabled={connecting}
+                onClick={() => setAccountSetup({ provider: "outlook" })}
+              >
+                Add Outlook
+              </button>
+              <button
+                className="secondary-button"
+                disabled={connecting}
+                onClick={() => setAccountSetup({ provider: "imap" })}
+              >
+                Add IMAP account
+              </button>
+            </div>
           </section>
           <section>
             <h2>Appearance</h2>
@@ -751,6 +785,14 @@ export function SettingsDialog({ state, onState, onClose, onError }: Props) {
           </section>
         </div>
       </section>
+      {accountSetup ? (
+        <AccountSetupDialog
+          provider={accountSetup.provider}
+          reconnectAccountId={accountSetup.reconnectAccountId}
+          onClose={() => setAccountSetup(undefined)}
+          onConnected={finishAccountSetup}
+        />
+      ) : null}
     </div>
   );
 }

@@ -11,11 +11,16 @@ import type {
   BootstrapState,
   ComposeInput,
   DraftRecipientFields,
+  ImapConnectInput,
+  ImapConnectResult,
+  ImapSettings,
   LicenseActivationResult,
   MailModifyResult,
   MailThread,
   MailUndoResult,
   ModifyActionInput,
+  OutlookAppInput,
+  OutlookSetup,
   ScheduledSendInput,
   SendAsIdentity,
   ThreadListInput,
@@ -135,6 +140,7 @@ export class FakeFluxmailRuntime {
   }
 
   private connected = true;
+  private outlookConfigured = false;
   private messages = structuredClone(seedMessages);
   private readonly draftRecipientValues = new Map<string, DraftRecipientFields>();
   private readonly scheduled = new Map<
@@ -250,6 +256,40 @@ export class FakeFluxmailRuntime {
   async connectGmail(_accountId?: string): Promise<AccountInfo> {
     this.connected = true;
     return account;
+  }
+
+  async connectOutlook(_accountId?: string): Promise<AccountInfo> {
+    this.connected = true;
+    return account;
+  }
+
+  async connectImap(input: ImapConnectInput): Promise<ImapConnectResult> {
+    this.connected = true;
+    const warnings = input.email.startsWith("no-archive@")
+      ? ["No Archive folder was found. Archive will be unavailable."]
+      : [];
+    return { account, warnings };
+  }
+
+  imapSettings(_accountId: string): ImapSettings {
+    throw new Error("The demo account does not use IMAP.");
+  }
+
+  outlookSetup(): OutlookSetup {
+    return {
+      configured: this.outlookConfigured,
+      editable: true,
+      redirectUri: "http://localhost:8976/oauth/microsoft/callback",
+    };
+  }
+
+  configureOutlook(_input: OutlookAppInput): OutlookSetup {
+    this.outlookConfigured = true;
+    return this.outlookSetup();
+  }
+
+  async reconnect(accountId: string): Promise<AccountInfo> {
+    return this.connectGmail(accountId);
   }
 
   async sendAs(_accountId: string): Promise<SendAsIdentity[]> {

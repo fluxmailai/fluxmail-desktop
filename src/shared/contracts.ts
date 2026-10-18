@@ -24,6 +24,75 @@ export const accountSchema = z.object({
 });
 export type AccountInfo = z.infer<typeof accountSchema>;
 
+export const oauthProviderSchema = z.enum(["gmail", "outlook"]);
+export type OAuthProvider = z.infer<typeof oauthProviderSchema>;
+
+const imapSecuritySchema = z.enum(["tls", "starttls"]);
+const imapServerSchema = z.object({
+  host: z
+    .string()
+    .trim()
+    .min(1)
+    .max(253)
+    .regex(/^[A-Za-z0-9.:[\]-]+$/, "Enter a server name such as imap.example.com."),
+  port: z.number().int().min(1).max(65_535),
+  security: imapSecuritySchema,
+  user: z.string().trim().min(1).max(320),
+});
+export type ImapServerSettings = z.infer<typeof imapServerSchema>;
+
+/** Passwords may be left blank when reconnecting to keep the saved ones. */
+export const imapConnectInputSchema = z.object({
+  email: z.string().trim().email().max(320),
+  displayName: z.string().trim().max(200).optional(),
+  imap: imapServerSchema.extend({ password: z.string().max(1024).optional() }),
+  smtp: imapServerSchema.extend({ password: z.string().max(1024).optional() }),
+  /** When false, SMTP signs in with the IMAP password. */
+  separateSmtpPassword: z.boolean().optional(),
+  reconnectAccountId: z.string().optional(),
+});
+export type ImapConnectInput = z.infer<typeof imapConnectInputSchema>;
+
+export const imapConnectResultSchema = z.object({
+  account: accountSchema,
+  warnings: z.array(z.string()),
+});
+export type ImapConnectResult = z.infer<typeof imapConnectResultSchema>;
+
+/** Saved IMAP settings without passwords, used to prefill a reconnection. */
+export const imapSettingsSchema = z.object({
+  email: z.string(),
+  displayName: z.string().optional(),
+  imap: imapServerSchema,
+  smtp: imapServerSchema,
+  separateSmtpPassword: z.boolean(),
+});
+export type ImapSettings = z.infer<typeof imapSettingsSchema>;
+
+export const outlookSetupSchema = z.object({
+  configured: z.boolean(),
+  editable: z.boolean(),
+  redirectUri: z.string(),
+});
+export type OutlookSetup = z.infer<typeof outlookSetupSchema>;
+
+export const outlookAppInputSchema = z.object({
+  clientId: z
+    .string()
+    .trim()
+    .regex(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+      "Enter the Application (client) ID from Microsoft Entra.",
+    ),
+  tenantId: z
+    .string()
+    .trim()
+    .min(1)
+    .max(255)
+    .regex(/^[A-Za-z0-9.-]+$/, "Enter common, organizations, consumers, or a tenant ID."),
+});
+export type OutlookAppInput = z.infer<typeof outlookAppInputSchema>;
+
 export const sendAsIdentitySchema = z.object({
   email: z.string(),
   name: z.string().optional(),
@@ -468,7 +537,11 @@ export interface FluxmailDesktopApi {
   bootstrap(): Promise<BootstrapState>;
   accounts: {
     list(): Promise<AccountInfo[]>;
-    connectGmail(): Promise<AccountInfo>;
+    connect(provider: OAuthProvider): Promise<AccountInfo>;
+    connectImap(input: ImapConnectInput): Promise<ImapConnectResult>;
+    imapSettings(accountId: string): Promise<ImapSettings>;
+    outlookSetup(): Promise<OutlookSetup>;
+    configureOutlook(input: OutlookAppInput): Promise<OutlookSetup>;
     reconnect(accountId: string): Promise<AccountInfo>;
     remove(accountId: string): Promise<void>;
     sendAs(accountId: string): Promise<SendAsIdentity[]>;
@@ -562,6 +635,10 @@ export const IPC = {
   bootstrap: "fluxmail:bootstrap",
   accountsList: "fluxmail:accounts:list",
   accountsConnect: "fluxmail:accounts:connect",
+  accountsConnectImap: "fluxmail:accounts:connect-imap",
+  accountsImapSettings: "fluxmail:accounts:imap-settings",
+  accountsOutlookSetup: "fluxmail:accounts:outlook-setup",
+  accountsOutlookConfigure: "fluxmail:accounts:outlook-configure",
   accountsReconnect: "fluxmail:accounts:reconnect",
   accountsRemove: "fluxmail:accounts:remove",
   accountsSendAs: "fluxmail:accounts:send-as",

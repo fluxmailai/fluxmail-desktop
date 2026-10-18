@@ -3173,6 +3173,229 @@ describe("FluxmailRuntime draft mutations", () => {
   });
 });
 
+describe("FluxmailRuntime Outlook and IMAP accounts", () => {
+  const imapAccount = {
+    id: "acct_imap",
+    email: "me@example.org",
+    provider: "imap" as const,
+    status: "active" as const,
+  };
+  const savedImap = {
+    imap: {
+      host: "imap.example.org",
+      port: 993,
+      security: "tls" as const,
+      user: "me@example.org",
+      password: "imap-secret",
+    },
+    smtp: {
+      host: "smtp.example.org",
+      port: 587,
+      security: "starttls" as const,
+      user: "me@example.org",
+      password: "smtp-secret",
+    },
+    saveSent: false,
+    folderOverrides: { sent: "Sent Items" },
+  };
+  const imapInput = {
+    email: "me@example.org",
+    imap: { host: "imap.example.org", port: 993, security: "tls" as const, user: "me@example.org" },
+    smtp: {
+      host: "smtp.example.org",
+      port: 587,
+      security: "starttls" as const,
+      user: "me@example.org",
+    },
+  };
+
+  function accountRuntime(accounts: Array<Record<string, unknown>> = []) {
+    const runtime = createRuntime({ cache: {}, service: {}, onCacheChanged: vi.fn() });
+    const registry = {
+      listAccounts: vi.fn(() => accounts),
+      getAccount: vi.fn((id: string) => {
+        const found = accounts.find((candidate) => candidate.id === id);
+        if (!found) throw new Error(`No account with id "${id}"`);
+        return found;
+      }),
+      assertCanAddAccount: vi.fn(),
+      testImapCredentials: vi.fn(async () => [
+        { role: "archive", reason: "missing", message: "No Archive folder was found" },
+      ]),
+      addImapAccount: vi.fn((email: string) => ({ ...imapAccount, email })),
+      loadImapCredentials: vi.fn(() => savedImap),
+      addOutlookAccount: vi.fn(),
+    };
+    const configuration = {
+      oauthStatus: vi.fn((): { outlook: { clientId: string | null; mutable: boolean } } => ({
+        outlook: { clientId: null, mutable: true },
+      })),
+      setMicrosoft: vi.fn(),
+    };
+    const internals = runtime as unknown as {
+      fluxmail: Record<string, unknown>;
+      context: Record<string, unknown> & { config: Record<string, unknown> };
+    };
+    Object.assign(internals.fluxmail, {
+      listMembers: vi.fn(() => []),
+      addMember: vi.fn(() => ({ id: "member-1" })),
+    });
+    Object.assign(internals.context, { registry, configuration });
+    Object.assign(internals.context.config, { oauthPort: 8976, oauthHost: "127.0.0.1" });
+    return { runtime, registry, configuration, fluxmail: internals.fluxmail };
+  }
+
+  it("tests the IMAP and SMTP servers before saving a new account", async () => {
+    const { runtime, registry, fluxmail } = accountRuntime();
+
+    const result = await runtime.connectImap({
+      ...imapInput,
+      displayName: " Me ",
+      imap: { ...imapInput.imap, password: "app-password" },
+      smtp: { ...imapInput.smtp },
+    });
+
+    const credentials = {
+      imap: { ...imapInput.imap, password: "app-password" },
+      smtp: { ...imapInput.smtp, password: "app-password" },
+      saveSent: true,
+      folderOverrides: {},
+    };
+    expect(registry.assertCanAddAccount).toHaveBeenCalled();
+    expect(registry.testImapCredentials).toHaveBeenCalledWith("me@example.org", credentials, "Me");
+    expect(fluxmail.addMember).toHaveBeenCalledWith(expect.anything(), {
+      name: "Me",
+      email: "me@example.org",
+    });
+    expect(registry.addImapAccount).toHaveBeenCalledWith(
+      "me@example.org",
+      credentials,
+      "Me",
+      "member-1",
+      undefined,
+      { sharedWithAll: false },
+    );
+    expect(result).toEqual({
+      account: expect.objectContaining({ id: "acct_imap", provider: "imap" }),
+      warnings: ["No Archive folder was found"],
+    });
+  });
+
+  it("does not save an account whose connection test fails", async () => {
+    const { runtime, registry } = accountRuntime();
+    registry.testImapCredentials.mockRejectedValueOnce(new Error("Invalid credentials"));
+
+    await expect(
+      runtime.connectImap({ ...imapInput, imap: { ...imapInput.imap, password: "wrong" } }),
+    ).rejects.toThrow("Invalid credentials");
+    expect(registry.addImapAccount).not.toHaveBeenCalled();
+  });
+
+  it("keeps saved passwords and folder settings when reconnecting", async () => {
+    const { runtime, registry } = accountRuntime([imapAccount]);
+
+    await runtime.connectImap({
+      ...imapInput,
+      separateSmtpPassword: true,
+      reconnectAccountId: imapAccount.id,
+    });
+
+    const credentials = { ...savedImap };
+    expect(registry.assertCanAddAccount).not.toHaveBeenCalled();
+    expect(registry.testImapCredentials).toHaveBeenCalledWith(
+      "me@example.org",
+      credentials,
+      undefined,
+    );
+    expect(registry.addImapAccount).toHaveBeenCalledWith(
+      "me@example.org",
+      credentials,
+      undefined,
+      undefined,
+      imapAccount.id,
+      undefined,
+    );
+  });
+
+  it("requires a password for a new IMAP account", async () => {
+    const { runtime, registry } = accountRuntime();
+
+    await expect(runtime.connectImap(imapInput)).rejects.toThrow(
+      "Enter the password for the IMAP server.",
+    );
+    expect(registry.testImapCredentials).not.toHaveBeenCalled();
+  });
+
+  it("refuses to connect an address that already uses another provider", async () => {
+    const { runtime } = accountRuntime([{ ...account, email: "me@example.org" }]);
+
+    await expect(
+      runtime.connectImap({ ...imapInput, imap: { ...imapInput.imap, password: "secret" } }),
+    ).rejects.toThrow("me@example.org is already connected through Gmail.");
+  });
+
+  it("returns saved IMAP settings without passwords", () => {
+    const { runtime } = accountRuntime([imapAccount]);
+
+    const settings = runtime.imapSettings(imapAccount.id);
+
+    expect(settings).toEqual({
+      email: "me@example.org",
+      imap: { host: "imap.example.org", port: 993, security: "tls", user: "me@example.org" },
+      smtp: { host: "smtp.example.org", port: 587, security: "starttls", user: "me@example.org" },
+      separateSmtpPassword: true,
+    });
+    expect(JSON.stringify(settings)).not.toContain("secret");
+  });
+
+  it("saves a Microsoft app in the shared configuration", () => {
+    const { runtime, configuration } = accountRuntime();
+
+    expect(runtime.outlookSetup()).toEqual({
+      configured: false,
+      editable: true,
+      redirectUri: "http://localhost:8976/oauth/microsoft/callback",
+    });
+    runtime.configureOutlook({
+      clientId: "11111111-2222-3333-4444-555555555555",
+      tenantId: "common",
+    });
+
+    expect(configuration.setMicrosoft).toHaveBeenCalledWith({
+      clientId: "11111111-2222-3333-4444-555555555555",
+      tenantId: "common",
+    });
+  });
+
+  it("does not change a Microsoft app set by the environment", () => {
+    const { runtime, configuration } = accountRuntime();
+    configuration.oauthStatus.mockReturnValue({
+      outlook: { clientId: "env-client", mutable: false },
+    });
+
+    expect(() =>
+      runtime.configureOutlook({
+        clientId: "11111111-2222-3333-4444-555555555555",
+        tenantId: "common",
+      }),
+    ).toThrow("MICROSOFT_CLIENT_ID");
+    expect(configuration.setMicrosoft).not.toHaveBeenCalled();
+  });
+
+  it("asks for a Microsoft app before starting Outlook sign-in", async () => {
+    const { runtime, registry } = accountRuntime();
+
+    await expect(runtime.connectOutlook()).rejects.toThrow("client ID");
+    expect(registry.addOutlookAccount).not.toHaveBeenCalled();
+  });
+
+  it("does not reconnect IMAP accounts without their server settings", async () => {
+    const { runtime } = accountRuntime([imapAccount]);
+
+    await expect(runtime.reconnect(imapAccount.id)).rejects.toThrow("IMAP server settings");
+  });
+});
+
 describe("FluxmailRuntime OAuth configuration", () => {
   it("rejects an incompatible store before writing bundled configuration", () => {
     const compatibility: StoreCompatibility = {

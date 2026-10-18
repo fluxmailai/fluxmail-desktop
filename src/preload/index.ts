@@ -19,6 +19,9 @@ import {
   featureEventSchema,
   imageRelayInputSchema,
   imageRelayResultSchema,
+  imapConnectInputSchema,
+  imapConnectResultSchema,
+  imapSettingsSchema,
   IPC,
   licenseActivationResultSchema,
   licenseKeySchema,
@@ -27,6 +30,9 @@ import {
   mailModifyResultSchema,
   mailUndoInputSchema,
   mailUndoResultSchema,
+  oauthProviderSchema,
+  outlookAppInputSchema,
+  outlookSetupSchema,
   sendInputSchema,
   sendAsIdentitySchema,
   sendResultSchema,
@@ -48,7 +54,16 @@ const api: FluxmailDesktopApi = {
   bootstrap: () => invoke(IPC.bootstrap, undefined, z.undefined(), bootstrapSchema),
   accounts: {
     list: () => invoke(IPC.accountsList, undefined, z.undefined(), z.array(accountSchema)),
-    connectGmail: () => invoke(IPC.accountsConnect, undefined, z.undefined(), accountSchema),
+    connect: (provider) =>
+      invoke(IPC.accountsConnect, provider, oauthProviderSchema, accountSchema),
+    connectImap: (input) =>
+      invoke(IPC.accountsConnectImap, input, imapConnectInputSchema, imapConnectResultSchema),
+    imapSettings: (accountId) =>
+      invoke(IPC.accountsImapSettings, accountId, z.string(), imapSettingsSchema),
+    outlookSetup: () =>
+      invoke(IPC.accountsOutlookSetup, undefined, z.undefined(), outlookSetupSchema),
+    configureOutlook: (input) =>
+      invoke(IPC.accountsOutlookConfigure, input, outlookAppInputSchema, outlookSetupSchema),
     reconnect: (accountId) => invoke(IPC.accountsReconnect, accountId, z.string(), accountSchema),
     remove: (accountId) => invoke(IPC.accountsRemove, accountId, z.string(), z.void()),
     sendAs: (accountId) =>

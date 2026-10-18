@@ -42,6 +42,9 @@ import {
   featureEventSchema,
   imageRelayInputSchema,
   imageRelayResultSchema,
+  imapConnectInputSchema,
+  imapConnectResultSchema,
+  imapSettingsSchema,
   IPC,
   licenseActivationResultSchema,
   licenseKeySchema,
@@ -50,6 +53,9 @@ import {
   mailModifyResultSchema,
   mailUndoInputSchema,
   mailUndoResultSchema,
+  oauthProviderSchema,
+  outlookAppInputSchema,
+  outlookSetupSchema,
   sendInputSchema,
   sendAsIdentitySchema,
   sendResultSchema,
@@ -416,14 +422,36 @@ function registerIpc(): void {
   handle(IPC.accountsList, z.undefined(), z.array(accountSchema), async () =>
     requireRuntime().accounts(),
   );
-  handle(IPC.accountsConnect, z.undefined(), accountSchema, async () => {
-    const account = await requireRuntime().connectGmail();
+  handle(IPC.accountsConnect, oauthProviderSchema, accountSchema, async (provider) => {
+    const runtime = requireRuntime();
+    const account =
+      provider === "outlook" ? await runtime.connectOutlook() : await runtime.connectGmail();
     sendEvent({ type: "accounts-changed" });
     await refresh("mutation");
     return account;
   });
+  handle(
+    IPC.accountsConnectImap,
+    imapConnectInputSchema,
+    imapConnectResultSchema,
+    async (input) => {
+      const result = await requireRuntime().connectImap(input);
+      sendEvent({ type: "accounts-changed" });
+      await refresh("mutation");
+      return result;
+    },
+  );
+  handle(IPC.accountsImapSettings, z.string(), imapSettingsSchema, async (accountId) =>
+    requireRuntime().imapSettings(accountId),
+  );
+  handle(IPC.accountsOutlookSetup, z.undefined(), outlookSetupSchema, async () =>
+    requireRuntime().outlookSetup(),
+  );
+  handle(IPC.accountsOutlookConfigure, outlookAppInputSchema, outlookSetupSchema, async (input) =>
+    requireRuntime().configureOutlook(input),
+  );
   handle(IPC.accountsReconnect, z.string(), accountSchema, async (accountId) => {
-    const account = await requireRuntime().connectGmail(accountId);
+    const account = await requireRuntime().reconnect(accountId);
     sendEvent({ type: "accounts-changed" });
     await refresh("mutation");
     return account;
