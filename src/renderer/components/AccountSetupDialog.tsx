@@ -3,6 +3,7 @@ import { ExternalLink, X } from "lucide-react";
 import type {
   AccountInfo,
   ImapConnectInput,
+  ImapServerSettings,
   ImapSettings,
   OutlookSetup,
 } from "../../shared/contracts";
@@ -234,18 +235,23 @@ function OutlookSetupStep({
   );
 }
 
+type Security = ImapServerSettings["security"];
+
 interface ImapForm {
   email: string;
   displayName: string;
   password: string;
   imapHost: string;
   imapPort: string;
+  imapSecurity: Security;
   imapUser: string;
   smtpHost: string;
   smtpPort: string;
+  smtpSecurity: Security;
   smtpUser: string;
   separateSmtpPassword: boolean;
   smtpPassword: string;
+  saveSent: boolean;
 }
 
 const EMPTY_IMAP_FORM: ImapForm = {
@@ -254,12 +260,15 @@ const EMPTY_IMAP_FORM: ImapForm = {
   password: "",
   imapHost: "",
   imapPort: String(DEFAULT_IMAP_PORT),
+  imapSecurity: securityForPort(DEFAULT_IMAP_PORT),
   imapUser: "",
   smtpHost: "",
   smtpPort: String(DEFAULT_SMTP_PORT),
+  smtpSecurity: securityForPort(DEFAULT_SMTP_PORT),
   smtpUser: "",
   separateSmtpPassword: false,
   smtpPassword: "",
+  saveSent: true,
 };
 
 function ImapSetupStep({
@@ -295,11 +304,14 @@ function ImapSetupStep({
           displayName: settings.displayName ?? "",
           imapHost: settings.imap.host,
           imapPort: String(settings.imap.port),
+          imapSecurity: settings.imap.security,
           imapUser: settings.imap.user,
           smtpHost: settings.smtp.host,
           smtpPort: String(settings.smtp.port),
+          smtpSecurity: settings.smtp.security,
           smtpUser: settings.smtp.user,
           separateSmtpPassword: settings.separateSmtpPassword,
+          saveSent: settings.saveSent,
         });
       })
       .catch((caught) => active && setError(errorMessage(caught, "Could not load the account.")))
@@ -339,18 +351,19 @@ function ImapSetupStep({
       imap: {
         host: form.imapHost.trim(),
         port: imapPort,
-        security: savedSecurity(saved?.imap, imapPort),
+        security: form.imapSecurity,
         user: imapUser,
         ...(form.password ? { password: form.password } : {}),
       },
       smtp: {
         host: form.smtpHost.trim(),
         port: smtpPort,
-        security: savedSecurity(saved?.smtp, smtpPort),
+        security: form.smtpSecurity,
         user: form.smtpUser.trim() || imapUser,
         ...(form.separateSmtpPassword && form.smtpPassword ? { password: form.smtpPassword } : {}),
       },
       separateSmtpPassword: form.separateSmtpPassword,
+      saveSent: form.saveSent,
       ...(reconnectAccountId ? { reconnectAccountId } : {}),
     };
     setBusy(true);
@@ -466,9 +479,21 @@ function ImapSetupStep({
               value={form.imapPort}
               required
               disabled={busy}
-              onChange={(event) => update({ imapPort: event.target.value })}
+              onChange={(event) =>
+                update({
+                  imapPort: event.target.value,
+                  imapSecurity: portSecurity(event.target.value, form.imapSecurity),
+                })
+              }
             />
           </Field>
+          <SecurityField
+            id="imap-security"
+            label="IMAP security"
+            value={form.imapSecurity}
+            disabled={busy}
+            onChange={(imapSecurity) => update({ imapSecurity })}
+          />
         </div>
         <div className="account-setup-server">
           <Field label="SMTP server" htmlFor="smtp-host">
@@ -493,12 +518,37 @@ function ImapSetupStep({
               value={form.smtpPort}
               required
               disabled={busy}
-              onChange={(event) => update({ smtpPort: event.target.value })}
+              onChange={(event) =>
+                update({
+                  smtpPort: event.target.value,
+                  smtpSecurity: portSecurity(event.target.value, form.smtpSecurity),
+                })
+              }
             />
           </Field>
+          <SecurityField
+            id="smtp-security"
+            label="SMTP security"
+            value={form.smtpSecurity}
+            disabled={busy}
+            onChange={(smtpSecurity) => update({ smtpSecurity })}
+          />
         </div>
         <p className="settings-help account-setup-note">
-          Ports 993 and 465 use TLS. Other ports use STARTTLS.
+          Security changes to match the port: 993 and 465 use TLS, other ports use STARTTLS.
+        </p>
+        <label className="account-setup-checkbox">
+          <input
+            type="checkbox"
+            checked={form.saveSent}
+            disabled={busy}
+            onChange={(event) => update({ saveSent: event.target.checked })}
+          />
+          Save a copy of sent mail in the Sent folder
+        </label>
+        <p className="settings-help account-setup-note">
+          Turn this off if your provider already saves the mail you send, or you will see each
+          message twice.
         </p>
         {showAdvanced ? (
           <>
@@ -599,6 +649,36 @@ function Field({
   );
 }
 
+function SecurityField({
+  id,
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: Security;
+  disabled: boolean;
+  onChange(value: Security): void;
+}) {
+  return (
+    <div className="account-setup-field account-setup-security">
+      <label htmlFor={id}>Security</label>
+      <select
+        id={id}
+        aria-label={label}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value as Security)}
+      >
+        <option value="tls">TLS</option>
+        <option value="starttls">STARTTLS</option>
+      </select>
+    </div>
+  );
+}
+
 function ExternalButton({ url, children }: { url: string; children: ReactNode }) {
   return (
     <button
@@ -624,12 +704,10 @@ function isPort(value: number): boolean {
   return Number.isInteger(value) && value >= 1 && value <= 65_535;
 }
 
-/** Keeps a reconnected account's saved security unless its port changed. */
-function savedSecurity(
-  saved: ImapSettings["imap"] | undefined,
-  port: number,
-): ImapSettings["imap"]["security"] {
-  return saved && saved.port === port ? saved.security : securityForPort(port);
+/** Editing a port resets security to that port's usual mode, which the user can still change. */
+function portSecurity(port: string, current: Security): Security {
+  const value = Number(port);
+  return isPort(value) ? securityForPort(value) : current;
 }
 
 function errorMessage(error: unknown, fallback: string): string {

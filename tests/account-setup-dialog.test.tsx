@@ -55,7 +55,35 @@ describe("AccountSetupDialog IMAP", () => {
         user: "me@icloud.com",
       },
       separateSmtpPassword: false,
+      saveSent: true,
     });
+  });
+
+  it("lets the user choose security for each server and skip saving sent mail", async () => {
+    const accounts = installApi({
+      connectImap: vi.fn(async () => ({ account: imapAccount, warnings: [] })),
+    });
+    render(<AccountSetupDialog provider="imap" onConnected={vi.fn()} onClose={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText("Email address"), {
+      target: { value: "me@example.org" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret" } });
+    fireEvent.change(screen.getAllByLabelText("Port")[1]!, { target: { value: "465" } });
+    expect(screen.getByLabelText("SMTP security")).toHaveValue("tls");
+    fireEvent.change(screen.getByLabelText("IMAP security"), { target: { value: "starttls" } });
+    fireEvent.change(screen.getByLabelText("SMTP security"), { target: { value: "starttls" } });
+    fireEvent.click(screen.getByLabelText("Save a copy of sent mail in the Sent folder"));
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }));
+
+    await waitFor(() => expect(accounts.connectImap).toHaveBeenCalled());
+    expect(accounts.connectImap).toHaveBeenCalledWith(
+      expect.objectContaining({
+        imap: expect.objectContaining({ port: 993, security: "starttls" }),
+        smtp: expect.objectContaining({ port: 465, security: "starttls" }),
+        saveSent: false,
+      }),
+    );
   });
 
   it("keeps hosts the user typed when the address changes", () => {
@@ -150,6 +178,7 @@ describe("AccountSetupDialog IMAP", () => {
         imap: { host: "mail.example.org", port: 143, security: "tls" as const, user: "me" },
         smtp: { host: "mail.example.org", port: 465, security: "tls" as const, user: "me" },
         separateSmtpPassword: false,
+        saveSent: false,
       })),
       connectImap: vi.fn(async () => ({ account: imapAccount, warnings: [] })),
     });
@@ -165,6 +194,8 @@ describe("AccountSetupDialog IMAP", () => {
     expect(await screen.findByLabelText("Email address")).toHaveValue("me@example.org");
     expect(screen.getByLabelText("Email address")).toHaveAttribute("readonly");
     expect(screen.getByLabelText("IMAP username")).toHaveValue("me");
+    expect(screen.getByLabelText("IMAP security")).toHaveValue("tls");
+    expect(screen.getByLabelText("Save a copy of sent mail in the Sent folder")).not.toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
 
     await waitFor(() => expect(accounts.connectImap).toHaveBeenCalled());
@@ -174,6 +205,7 @@ describe("AccountSetupDialog IMAP", () => {
       imap: { host: "mail.example.org", port: 143, security: "tls", user: "me" },
       smtp: { host: "mail.example.org", port: 465, security: "tls", user: "me" },
       separateSmtpPassword: false,
+      saveSent: false,
       reconnectAccountId: "acct_imap",
     });
   });

@@ -482,7 +482,7 @@ export class FluxmailRuntime {
     const credentials = {
       imap: { ...input.imap, password: imapPassword },
       smtp: { ...input.smtp, password: smtpPassword },
-      saveSent: previous?.saveSent ?? true,
+      saveSent: input.saveSent ?? previous?.saveSent ?? true,
       folderOverrides: previous?.folderOverrides ?? {},
     };
     const displayName = input.displayName?.trim() || undefined;
@@ -505,7 +505,7 @@ export class FluxmailRuntime {
 
   imapSettings(accountId: string): ImapSettings {
     const account = this.requireAccountProvider(accountId, "imap");
-    const { imap, smtp } = this.context.registry.loadImapCredentials(accountId);
+    const { imap, smtp, saveSent } = this.context.registry.loadImapCredentials(accountId);
     const withoutPassword = ({ host, port, security, user }: typeof imap) => ({
       host,
       port,
@@ -518,6 +518,7 @@ export class FluxmailRuntime {
       imap: withoutPassword(imap),
       smtp: withoutPassword(smtp),
       separateSmtpPassword: smtp.password !== imap.password,
+      saveSent,
     };
   }
 

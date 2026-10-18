@@ -3281,6 +3281,25 @@ describe("FluxmailRuntime Outlook and IMAP accounts", () => {
     });
   });
 
+  it("saves the sent-mail choice for a new IMAP account", async () => {
+    const { runtime, registry } = accountRuntime();
+
+    await runtime.connectImap({
+      ...imapInput,
+      imap: { ...imapInput.imap, password: "app-password" },
+      saveSent: false,
+    });
+
+    expect(registry.addImapAccount).toHaveBeenCalledWith(
+      "me@example.org",
+      expect.objectContaining({ saveSent: false }),
+      undefined,
+      "member-1",
+      undefined,
+      { sharedWithAll: false },
+    );
+  });
+
   it("does not save an account whose connection test fails", async () => {
     const { runtime, registry } = accountRuntime();
     registry.testImapCredentials.mockRejectedValueOnce(new Error("Invalid credentials"));
@@ -3344,6 +3363,7 @@ describe("FluxmailRuntime Outlook and IMAP accounts", () => {
       imap: { host: "imap.example.org", port: 993, security: "tls", user: "me@example.org" },
       smtp: { host: "smtp.example.org", port: 587, security: "starttls", user: "me@example.org" },
       separateSmtpPassword: true,
+      saveSent: false,
     });
     expect(JSON.stringify(settings)).not.toContain("secret");
   });

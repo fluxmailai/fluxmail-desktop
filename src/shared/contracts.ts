@@ -49,6 +49,8 @@ export const imapConnectInputSchema = z.object({
   smtp: imapServerSchema.extend({ password: z.string().max(1024).optional() }),
   /** When false, SMTP signs in with the IMAP password. */
   separateSmtpPassword: z.boolean().optional(),
+  /** Copy sent mail to the Sent folder. Turn off for providers that file it themselves. */
+  saveSent: z.boolean().optional(),
   reconnectAccountId: z.string().optional(),
 });
 export type ImapConnectInput = z.infer<typeof imapConnectInputSchema>;
@@ -66,6 +68,7 @@ export const imapSettingsSchema = z.object({
   imap: imapServerSchema,
   smtp: imapServerSchema,
   separateSmtpPassword: z.boolean(),
+  saveSent: z.boolean(),
 });
 export type ImapSettings = z.infer<typeof imapSettingsSchema>;
 
