@@ -18,12 +18,17 @@ import type {
   ComposeInput,
   DraftRecipientFields,
   FolderInfo,
+  ImapConnectInput,
+  ImapConnectResult,
+  ImapSettings,
   LicenseActivationResult,
   MailModifyResult,
   MailThread,
   MailUndoResult,
   MailboxView,
   ModifyActionInput,
+  OutlookAppInput,
+  OutlookSetup,
   ScheduledSendInput,
   ScheduledSendResult,
   SendAsIdentity,
@@ -42,7 +47,9 @@ import {
 import {
   googleCredentialsAllowPermanentDelete,
   googleOAuthSourceAllowsPermanentDelete,
+  microsoftOAuthRedirectUri,
   runGoogleOAuth,
+  runMicrosoftOAuth,
 } from "./oauth";
 
 interface RuntimeOptions {
@@ -89,7 +96,8 @@ export class FluxmailRuntime {
   >();
   private cacheGeneration = 0;
   private viewRefreshGeneration = 0;
-  private googleOAuthAttempt?: Promise<Awaited<ReturnType<typeof runGoogleOAuth>>>;
+  /** Google and Microsoft share the loopback port, so only one sign-in can wait at a time. */
+  private oauthSignIn?: "Google" | "Microsoft";
   private imageRelayLicenseRefresh?: Promise<void>;
   private imageRelayAccessDeniedByServer = false;
   private readonly backgroundViewRefreshes = new Map<string, Promise<void>>();
@@ -367,43 +375,196 @@ export class FluxmailRuntime {
         "This build is missing Google OAuth settings. Set up the desktop OAuth client and rebuild Fluxmail.",
       );
     }
-    if (this.googleOAuthAttempt) throw new Error("Google sign-in is already open in your browser.");
-    this.googleOAuthAttempt = runGoogleOAuth({
-      clientId: config.clientId,
-      clientSecret: config.clientSecret,
-      port: this.context.config.oauthPort,
-      allowPermanentDelete: googleOAuthSourceAllowsPermanentDelete(
-        this.context.configuration.oauthStatus().google.source,
-      ),
-      openExternal: this.options.openExternal,
-    });
-    let identity: Awaited<ReturnType<typeof runGoogleOAuth>>;
-    try {
-      identity = await this.googleOAuthAttempt;
-    } finally {
-      this.googleOAuthAttempt = undefined;
-    }
+    const identity = await this.withOAuthSignIn("Google", () =>
+      runGoogleOAuth({
+        clientId: config.clientId,
+        clientSecret: config.clientSecret,
+        port: this.context.config.oauthPort,
+        allowPermanentDelete: googleOAuthSourceAllowsPermanentDelete(
+          this.context.configuration.oauthStatus().google.source,
+        ),
+        openExternal: this.options.openExternal,
+      }),
+    );
     const existing = accountId ? this.context.registry.getAccount(accountId) : undefined;
     if (existing && existing.email.toLowerCase() !== identity.email.toLowerCase()) {
       throw new Error(`Choose ${existing.email} in Google to reconnect this account.`);
     }
     this.assertStoreCompatible();
-    const members = this.fluxmail.listMembers(this.context.db);
-    const owner =
-      members[0] ??
-      this.fluxmail.addMember(this.context.db, {
-        name: identity.displayName || identity.email.split("@")[0] || "Fluxmail user",
-        email: identity.email,
-      });
     const account = this.context.registry.addGmailAccount(
       identity.email,
       identity.tokens,
       identity.displayName,
-      owner.id,
+      this.ownerMemberId(identity.email, identity.displayName),
       { sharedWithAll: false },
     );
     this.sendAsCache.delete(account.id);
     return toAccountInfo(account, identity.canPermanentlyDelete);
+  }
+
+  outlookSetup(): OutlookSetup {
+    const status = this.context.configuration.oauthStatus().outlook;
+    return {
+      configured: Boolean(status.clientId),
+      editable: status.mutable,
+      redirectUri: microsoftOAuthRedirectUri(this.context.config.oauthPort),
+    };
+  }
+
+  /** Saves the Microsoft Entra app in the shared Fluxmail configuration, as the CLI does. */
+  configureOutlook(input: OutlookAppInput): OutlookSetup {
+    this.assertStoreCompatible();
+    if (!this.context.configuration.oauthStatus().outlook.mutable) {
+      throw new Error(
+        "The Microsoft app is set by MICROSOFT_CLIENT_ID, so Fluxmail cannot change it here.",
+      );
+    }
+    this.context.configuration.setMicrosoft({
+      clientId: input.clientId,
+      tenantId: input.tenantId,
+    });
+    return this.outlookSetup();
+  }
+
+  async connectOutlook(accountId?: string): Promise<AccountInfo> {
+    this.assertStoreCompatible();
+    const app = this.context.config.microsoft;
+    if (!app) throw new Error("Add your Microsoft app's client ID before connecting Outlook.");
+    const existing = accountId ? this.requireAccountProvider(accountId, "outlook") : undefined;
+    if (!existing) this.context.registry.assertCanAddAccount();
+    const identity = await this.withOAuthSignIn("Microsoft", () =>
+      runMicrosoftOAuth({
+        app,
+        host: this.context.config.oauthHost,
+        port: this.context.config.oauthPort,
+        openExternal: this.options.openExternal,
+      }),
+    );
+    if (existing && existing.email.toLowerCase() !== identity.email.toLowerCase()) {
+      throw new Error(`Choose ${existing.email} in Microsoft to reconnect this account.`);
+    }
+    this.assertStoreCompatible();
+    const account = this.context.registry.addOutlookAccount(
+      identity.email,
+      identity.credentials,
+      identity.displayName,
+      existing ? undefined : this.ownerMemberId(identity.email, identity.displayName),
+      existing?.id,
+      existing ? undefined : { sharedWithAll: false },
+    );
+    this.sendAsCache.delete(account.id);
+    return toAccountInfo(account, true);
+  }
+
+  async connectImap(input: ImapConnectInput): Promise<ImapConnectResult> {
+    this.assertStoreCompatible();
+    const registry = this.context.registry;
+    const email = input.email.trim();
+    const existing = input.reconnectAccountId
+      ? this.requireAccountProvider(input.reconnectAccountId, "imap")
+      : registry.listAccounts().find((account) => sameEmail(account.email, email));
+    if (existing && !sameEmail(existing.email, email)) {
+      throw new Error(`This account is connected as ${existing.email}. Use that address.`);
+    }
+    if (existing && existing.provider !== "imap") {
+      throw new Error(
+        `${existing.email} is already connected through ${providerName(existing.provider)}. Remove it before connecting with IMAP.`,
+      );
+    }
+    if (!existing) registry.assertCanAddAccount();
+    const previous = existing ? registry.loadImapCredentials(existing.id) : undefined;
+    const imapPassword = input.imap.password || previous?.imap.password;
+    if (!imapPassword) throw new Error("Enter the password for the IMAP server.");
+    const smtpPassword = input.separateSmtpPassword
+      ? input.smtp.password || previous?.smtp.password
+      : imapPassword;
+    if (!smtpPassword) throw new Error("Enter the password for the SMTP server.");
+    const credentials = {
+      imap: { ...input.imap, password: imapPassword },
+      smtp: { ...input.smtp, password: smtpPassword },
+      saveSent: input.saveSent ?? previous?.saveSent ?? true,
+      folderOverrides: previous?.folderOverrides ?? {},
+    };
+    const displayName = input.displayName?.trim() || undefined;
+    const warnings = await registry.testImapCredentials(email, credentials, displayName);
+    this.assertStoreCompatible();
+    const account = registry.addImapAccount(
+      email,
+      credentials,
+      displayName,
+      existing ? undefined : this.ownerMemberId(email, displayName),
+      existing?.id,
+      existing ? undefined : { sharedWithAll: false },
+    );
+    this.sendAsCache.delete(account.id);
+    return {
+      account: toAccountInfo(account, true),
+      warnings: warnings.map((warning) => warning.message),
+    };
+  }
+
+  imapSettings(accountId: string): ImapSettings {
+    const account = this.requireAccountProvider(accountId, "imap");
+    const { imap, smtp, saveSent } = this.context.registry.loadImapCredentials(accountId);
+    const withoutPassword = ({ host, port, security, user }: typeof imap) => ({
+      host,
+      port,
+      security,
+      user,
+    });
+    return {
+      email: account.email,
+      ...(account.displayName ? { displayName: account.displayName } : {}),
+      imap: withoutPassword(imap),
+      smtp: withoutPassword(smtp),
+      separateSmtpPassword: smtp.password !== imap.password,
+      saveSent,
+    };
+  }
+
+  /** IMAP accounts reconnect through connectImap, which needs the server settings. */
+  async reconnect(accountId: string): Promise<AccountInfo> {
+    const account = this.context.registry.getAccount(accountId);
+    if (account.provider === "gmail") return this.connectGmail(accountId);
+    if (account.provider === "outlook") return this.connectOutlook(accountId);
+    throw new Error("Enter the IMAP server settings to reconnect this account.");
+  }
+
+  private async withOAuthSignIn<T>(
+    provider: "Google" | "Microsoft",
+    signIn: () => Promise<T>,
+  ): Promise<T> {
+    if (this.oauthSignIn)
+      throw new Error(`${this.oauthSignIn} sign-in is already open in your browser.`);
+    this.oauthSignIn = provider;
+    try {
+      return await signIn();
+    } finally {
+      this.oauthSignIn = undefined;
+    }
+  }
+
+  private requireAccountProvider(
+    accountId: string,
+    provider: AccountInfo["provider"],
+  ): ReturnType<AppContext["registry"]["getAccount"]> {
+    const account = this.context.registry.getAccount(accountId);
+    if (account.provider !== provider) {
+      throw new Error(`${account.email} is connected through ${providerName(account.provider)}.`);
+    }
+    return account;
+  }
+
+  /** New mailboxes belong to the desktop's member, which is created with the first account. */
+  private ownerMemberId(email: string, displayName?: string): string {
+    const members = this.fluxmail.listMembers(this.context.db);
+    const owner =
+      members[0] ??
+      this.fluxmail.addMember(this.context.db, {
+        name: displayName || email.split("@")[0] || "Fluxmail user",
+        email,
+      });
+    return owner.id;
   }
 
   removeAccount(accountId: string): void {
@@ -1757,6 +1918,14 @@ function escapeHtml(value: string): string {
     /[&<>]/g,
     (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[character]!,
   );
+}
+
+function sameEmail(left: string, right: string): boolean {
+  return left.toLowerCase() === right.toLowerCase();
+}
+
+function providerName(provider: AccountInfo["provider"]): string {
+  return { gmail: "Gmail", outlook: "Outlook", imap: "IMAP" }[provider];
 }
 
 function toAccountInfo(

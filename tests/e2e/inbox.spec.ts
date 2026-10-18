@@ -1530,3 +1530,91 @@ test("starts the packaged app with the bundled Fluxmail service", async () => {
     });
   }
 });
+
+test("shows IMAP folder warnings when connecting the first account", async () => {
+  const dataDirectory = mkdtempSync(path.join(tmpdir(), "fluxmail-first-imap-e2e-"));
+  const electronApp = await electron.launch({
+    args: [mockKeychainArgument, process.cwd()],
+    env: {
+      ...process.env,
+      FLUXMAIL_DESKTOP_FAKE_MAIL: "1",
+      FLUXMAIL_DESKTOP_E2E_HEADLESS: "1",
+      FLUXMAIL_DESKTOP_TEST_DATA_DIR: dataDirectory,
+      FLUXMAIL_DATA_DIR: path.join(dataDirectory, ".fluxmail"),
+      FLUXMAIL_TELEMETRY: "0",
+    },
+  });
+
+  try {
+    const page = await electronApp.firstWindow();
+    await expect(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
+    await page.locator(".sidebar-footer").getByRole("button", { name: "Settings" }).click();
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page
+      .getByRole("dialog", { name: "Settings" })
+      .getByRole("button", { name: "Remove account" })
+      .click();
+
+    await page.getByRole("button", { name: "Connect with IMAP" }).click();
+    const imap = page.getByRole("dialog", { name: "Connect IMAP account" });
+    await imap.getByLabel("Email address").fill("no-archive@example.com");
+    await imap.getByLabel("IMAP server").fill("imap.example.com");
+    await imap.getByLabel("SMTP server").fill("smtp.example.com");
+    await imap.getByLabel("Password").fill("app-password");
+    await imap.getByRole("button", { name: "Connect" }).click();
+
+    await expect(imap.getByText("No Archive folder was found.", { exact: false })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Inbox" })).toBeHidden();
+    await imap.getByRole("button", { name: "Done" }).click();
+    await expect(imap).toBeHidden();
+    await expect(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
+  } finally {
+    await electronApp.close();
+    rmSync(dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test("adds Outlook and IMAP accounts from Settings", async () => {
+  const dataDirectory = mkdtempSync(path.join(tmpdir(), "fluxmail-account-setup-e2e-"));
+  const electronApp = await electron.launch({
+    args: [mockKeychainArgument, process.cwd()],
+    env: {
+      ...process.env,
+      FLUXMAIL_DESKTOP_FAKE_MAIL: "1",
+      FLUXMAIL_DESKTOP_E2E_HEADLESS: "1",
+      FLUXMAIL_DESKTOP_TEST_DATA_DIR: dataDirectory,
+      FLUXMAIL_DATA_DIR: path.join(dataDirectory, ".fluxmail"),
+      FLUXMAIL_TELEMETRY: "0",
+    },
+  });
+
+  try {
+    const page = await electronApp.firstWindow();
+    await expect(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
+    await page.locator(".sidebar-footer").getByRole("button", { name: "Settings" }).click();
+    const settings = page.getByRole("dialog", { name: "Settings" });
+
+    await settings.getByRole("button", { name: "Add IMAP account" }).click();
+    const imap = page.getByRole("dialog", { name: "Connect IMAP account" });
+    await imap.getByLabel("Email address").fill("me@icloud.com");
+    await expect(imap.getByLabel("IMAP server")).toHaveValue("imap.mail.me.com");
+    await expect(imap.getByLabel("SMTP server")).toHaveValue("smtp.mail.me.com");
+    await imap.getByLabel("Password").fill("app-password");
+    await imap.getByRole("button", { name: "Connect" }).click();
+    await expect(imap).toBeHidden();
+    await expect(settings).toBeVisible();
+
+    await settings.getByRole("button", { name: "Add Outlook" }).click();
+    const outlook = page.getByRole("dialog", { name: "Connect Outlook" });
+    await expect(outlook.getByText("http://localhost:8976/oauth/microsoft/callback")).toBeVisible();
+    await outlook
+      .getByLabel("Application (client) ID")
+      .fill("11111111-2222-3333-4444-555555555555");
+    await outlook.getByRole("button", { name: "Save and sign in" }).click();
+    await expect(outlook).toBeHidden();
+    await expect(settings).toBeVisible();
+  } finally {
+    await electronApp.close();
+    rmSync(dataDirectory, { recursive: true, force: true });
+  }
+});

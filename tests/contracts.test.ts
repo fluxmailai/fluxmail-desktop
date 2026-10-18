@@ -3,10 +3,12 @@ import {
   appearancePreferenceSchema,
   composeInputSchema,
   featureEventSchema,
+  imapConnectInputSchema,
   licenseActivationResultSchema,
   licenseKeySchema,
   mailForwardInputSchema,
   messageSchema,
+  outlookAppInputSchema,
   sendInputSchema,
   threadListInputSchema,
 } from "../src/shared/contracts";
@@ -156,6 +158,43 @@ describe("desktop contracts", () => {
         action: "submitted",
         source: "toolbar",
       }),
+    ).toThrow();
+  });
+
+  it("validates Microsoft app settings", () => {
+    expect(
+      outlookAppInputSchema.parse({
+        clientId: " 11111111-2222-3333-4444-555555555555 ",
+        tenantId: "contoso.onmicrosoft.com",
+      }),
+    ).toEqual({
+      clientId: "11111111-2222-3333-4444-555555555555",
+      tenantId: "contoso.onmicrosoft.com",
+    });
+    expect(() =>
+      outlookAppInputSchema.parse({ clientId: "not-a-client-id", tenantId: "common" }),
+    ).toThrow("Application (client) ID");
+    expect(() =>
+      outlookAppInputSchema.parse({
+        clientId: "11111111-2222-3333-4444-555555555555",
+        tenantId: "common/../evil",
+      }),
+    ).toThrow();
+  });
+
+  it("validates IMAP connection settings", () => {
+    const input = {
+      email: "me@example.org",
+      imap: { host: "imap.example.org", port: 993, security: "tls", user: "me", password: "p" },
+      smtp: { host: "smtp.example.org", port: 587, security: "starttls", user: "me" },
+    };
+    expect(imapConnectInputSchema.parse(input)).toEqual(input);
+    expect(() => imapConnectInputSchema.parse({ ...input, email: "not-an-email" })).toThrow();
+    expect(() =>
+      imapConnectInputSchema.parse({ ...input, imap: { ...input.imap, port: 70_000 } }),
+    ).toThrow();
+    expect(() =>
+      imapConnectInputSchema.parse({ ...input, smtp: { ...input.smtp, host: "smtp host" } }),
     ).toThrow();
   });
 

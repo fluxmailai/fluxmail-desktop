@@ -49,6 +49,7 @@ interface DeliveryNotice {
 
 export function App() {
   const [bootstrap, setBootstrap] = useState<BootstrapState | null>(null);
+  const [accountSetupOpen, setAccountSetupOpen] = useState(false);
   const [view, setView] = useState<MailboxView>("inbox");
   const [label, setLabel] = useState<string>();
   const [accountId, setAccountId] = useState<string>();
@@ -948,9 +949,12 @@ export function App() {
   ]);
 
   if (!bootstrap) return <Splash error={startupError} />;
-  if (!bootstrap.accounts.length) {
+  // The first account appears in bootstrap before the setup dialog finishes, so
+  // keep onboarding up until the user dismisses any connection warnings.
+  if (!bootstrap.accounts.length || accountSetupOpen) {
     return (
       <Onboarding
+        onSetupOpenChange={setAccountSetupOpen}
         onConnected={async () => {
           await loadBootstrap();
           await loadThreads();

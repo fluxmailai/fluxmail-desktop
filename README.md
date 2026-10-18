@@ -1,8 +1,8 @@
 # Fluxmail Desktop
 
-Fluxmail Desktop is a fast, local-first Gmail client for macOS. It uses Electron and calls the pinned Fluxmail npm package directly in the main process. There is no local REST server, MCP transport, or hosted web API between the interface and Gmail.
+Fluxmail Desktop is a fast, local-first email client for macOS. It works with Gmail, Outlook, and any mailbox that supports IMAP and SMTP. It uses Electron and calls the pinned Fluxmail npm package directly in the main process. There is no local REST server, MCP transport, or hosted web API between the interface and your mail provider.
 
-The first release focuses on the work people do every day: a unified inbox, account and folder navigation, search, conversations, attachments, bulk actions, drafts, compose, reply, reply all, and forward. It supports multiple Gmail accounts and keeps the normal macOS app process running for sync and notifications after its last window closes.
+The first release focuses on the work people do every day: a unified inbox, account and folder navigation, search, conversations, attachments, bulk actions, drafts, compose, reply, reply all, and forward. It supports multiple accounts from any of those providers and keeps the normal macOS app process running for sync and notifications after its last window closes.
 
 ## Requirements
 
@@ -10,6 +10,7 @@ The first release focuses on the work people do every day: a unified inbox, acco
 - Node.js 22.22 or newer
 - pnpm 11.9.0
 - A Google OAuth desktop client for live Gmail use
+- A Microsoft Entra app for live Outlook use
 
 ## Set up the repository
 
@@ -22,6 +23,10 @@ pnpm install
 ```
 
 Fluxmail uses the OAuth app included in the installed package by default. To use a different Google OAuth desktop client, copy `.env.example` to `.env` and set `FLUXMAIL_DESKTOP_GOOGLE_CLIENT_ID` and `FLUXMAIL_DESKTOP_GOOGLE_CLIENT_SECRET`. Vite injects these overrides into the Electron main bundle only. They are not available to the renderer. The bundled client uses `gmail.modify`, while a custom client requests full Gmail access. Fluxmail shows permanent deletion only after Google grants that scope. Reconnect accounts that were added before the custom client was configured.
+
+Outlook sign-in needs a Microsoft Entra app that you register yourself. In the app's Authentication settings, add the Mobile and desktop applications platform with the redirect URI `http://localhost:8976/oauth/microsoft/callback` and turn on Allow public client flows. The app does not need a client secret. The first time you connect Outlook, Fluxmail asks for the app's Application (client) ID and saves it in `~/.fluxmail`, where the CLI can use it as well.
+
+IMAP accounts need the IMAP and SMTP server names and a password. Fluxmail fills in the usual servers for common providers and tests both connections before it saves the account. iCloud, Yahoo, Gmail, and many other providers require an app-specific password here.
 
 Private image relay is available with an active Pro, Team, or Enterprise license. It works with every supported mailbox provider and does not depend on the Google OAuth client. The desktop app exchanges its cached signed license lease for a relay token that lasts up to 24 hours. If the license is unavailable, expired, or in its grace period, Fluxmail leaves remote images blocked instead of loading them directly.
 

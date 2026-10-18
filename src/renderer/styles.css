@@ -2669,6 +2669,190 @@ textarea:focus-visible,
   gap: 4px;
 }
 
+.settings-add-account {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Outlook and IMAP account setup */
+
+.account-setup-backdrop {
+  -webkit-app-region: no-drag;
+}
+
+.account-setup-dialog {
+  width: min(520px, calc(100vw - 50px));
+}
+
+.account-setup-dialog .settings-content > section {
+  padding-top: 4px;
+}
+
+.account-setup-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding-left: 18px;
+  list-style: decimal;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.account-setup-steps strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.account-setup-code {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--hairline-soft);
+  border-radius: 7px;
+  padding: 4px 8px;
+  background: var(--field);
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  user-select: all;
+}
+
+.account-setup-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.account-setup-field {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.account-setup-field > label {
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 620;
+}
+
+.account-setup-field > small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.account-setup-field input,
+.account-setup-field select {
+  min-width: 0;
+  height: 35px;
+  border: 1px solid var(--hairline);
+  border-radius: 9px;
+  padding: 0 11px;
+  background: var(--field);
+  color: var(--ink);
+  font-size: 11px;
+  box-shadow: inset 0 1px 2px rgb(30 32 28 / 0.025);
+}
+
+.account-setup-field input:focus,
+.account-setup-field select:focus {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--hairline));
+  background: var(--paper);
+}
+
+.account-setup-field input:read-only {
+  color: var(--muted);
+}
+
+.account-setup-field input::placeholder {
+  color: var(--muted-faint);
+}
+
+.account-setup-server {
+  display: flex;
+  gap: 8px;
+}
+
+.account-setup-server > .account-setup-field:nth-child(2) {
+  flex: 0 0 76px;
+}
+
+.account-setup-server > .account-setup-security {
+  flex: 0 0 104px;
+}
+
+.account-setup-form > .account-setup-note {
+  margin: -6px 0 0;
+}
+
+.account-setup-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.account-setup-dialog .account-setup-link,
+.account-setup-dialog .account-setup-advanced {
+  height: auto;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--accent-deep);
+  box-shadow: none;
+}
+
+.account-setup-dialog .account-setup-link {
+  display: inline-flex;
+  gap: 3px;
+  font-size: inherit;
+}
+
+.account-setup-dialog .account-setup-link:hover,
+.account-setup-dialog .account-setup-advanced:hover {
+  background: none;
+  text-decoration: underline;
+}
+
+.account-setup-advanced {
+  align-self: flex-start;
+}
+
+.account-setup-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 6px;
+}
+
+.account-setup-actions > .account-setup-link {
+  margin-right: auto;
+  font-size: 11px;
+}
+
+.account-setup-error {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.account-setup-warnings {
+  margin: 0;
+  padding-left: 18px;
+  list-style: disc;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 /* Onboarding and transient states */
 
 .onboarding,
@@ -2719,9 +2903,16 @@ textarea:focus-visible,
   user-select: none;
 }
 
+.onboarding-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .connect-button {
   width: min(340px, calc(100vw - 80px));
   height: 43px;
+  justify-content: center;
   -webkit-app-region: no-drag;
 }
 
