@@ -2,11 +2,26 @@
 
 Fluxmail Desktop records user-facing changes in this file. The format follows [Common Changelog](https://common-changelog.org/).
 
-## [Unreleased](https://github.com/fluxmailai/fluxmail-desktop/compare/v0.6.0...HEAD)
+## [Unreleased](https://github.com/fluxmailai/fluxmail-desktop/compare/v0.7.0...HEAD)
+
+## [0.7.0](https://github.com/fluxmailai/fluxmail-desktop/releases/tag/v0.7.0) - 2026-10-19
+
+_These artifacts use Fluxmail's self-signed certificate and have not been notarized by Apple, so macOS will require approval before opening the app._
+
+### Changed
+
+- Open conversations faster, and show recently opened conversations right away when you return to them ([#80](https://github.com/fluxmailai/fluxmail-desktop/pull/80))
 
 ### Added
 
+- Connect Outlook accounts through a Microsoft Entra app you register, and connect any IMAP and SMTP mailbox, with server settings filled in for common providers ([#81](https://github.com/fluxmailai/fluxmail-desktop/pull/81))
 - Choose which address to send from, including Gmail send-as aliases, when writing a message, reply, or forward; replies start from the address the original was sent to ([#79](https://github.com/fluxmailai/fluxmail-desktop/pull/79))
+- Open `mailto:` links from a message in a new Fluxmail compose window with the recipients, subject, and body filled in ([#78](https://github.com/fluxmailai/fluxmail-desktop/pull/78))
+- Right-click a link to open it in your browser or copy it, and right-click selected text, images, or text fields to copy, paste, or correct spelling ([#77](https://github.com/fluxmailai/fluxmail-desktop/pull/77))
+
+### Fixed
+
+- Keep images with a set width at their intended size inside table-based emails instead of shrinking them ([#76](https://github.com/fluxmailai/fluxmail-desktop/pull/76))
 
 ## [0.6.0](https://github.com/fluxmailai/fluxmail-desktop/releases/tag/v0.6.0) - 2026-10-17
 
