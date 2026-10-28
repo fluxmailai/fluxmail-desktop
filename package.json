@@ -19,9 +19,7 @@
     "test": "ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs run",
     "test:watch": "ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs",
     "test:e2e": "electron-forge package && playwright test",
-    "postinstall": "install-electron && electron-rebuild -f -w better-sqlite3",
-    "commitlint": "commitlint",
-    "prepare": "node -e \"if (!process.env.CI && process.env.NODE_ENV !== 'production' && require('node:fs').existsSync('.git')) import('husky').then(({ default: husky }) => husky())\""
+    "postinstall": "install-electron && electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
     "@fluxmail/core": "0.15.0",
@@ -42,8 +40,6 @@
     "zod": "^3.25.67"
   },
   "devDependencies": {
-    "@commitlint/cli": "21.2.4",
-    "@commitlint/config-conventional": "21.2.4",
     "@electron-forge/cli": "7.11.2",
     "@electron-forge/maker-dmg": "7.11.2",
     "@electron-forge/maker-zip": "7.11.2",
@@ -64,7 +60,6 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "5.2.0",
     "electron": "43.1.1",
-    "husky": "9.1.7",
     "jsdom": "29.1.1",
     "oxfmt": "^0.55.0",
     "oxlint": "^1.70.0",
