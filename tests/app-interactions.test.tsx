@@ -1425,6 +1425,7 @@ function installApi(
       },
       sync: { refresh: vi.fn(async () => undefined) },
       analytics: { trackFeature: vi.fn(async () => undefined) },
+      startupError: vi.fn(async () => null),
       system: {
         confirmWindowClose: vi.fn(async () => undefined),
         cancelWindowClose: vi.fn(async () => undefined),

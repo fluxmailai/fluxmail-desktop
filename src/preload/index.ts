@@ -2,8 +2,8 @@ import { contextBridge, ipcRenderer } from "electron";
 import { z } from "zod";
 import {
   accountSchema,
-  appearancePreferenceSchema,
   appErrorSchema,
+  appearancePreferenceSchema,
   appEventSchema,
   attachmentInlineInputSchema,
   attachmentPrepareInputSchema,
@@ -52,6 +52,7 @@ import {
 
 const api: FluxmailDesktopApi = {
   bootstrap: () => invoke(IPC.bootstrap, undefined, z.undefined(), bootstrapSchema),
+  startupError: () => invoke(IPC.startupError, undefined, z.undefined(), appErrorSchema.nullable()),
   accounts: {
     list: () => invoke(IPC.accountsList, undefined, z.undefined(), z.array(accountSchema)),
     connect: (provider) =>

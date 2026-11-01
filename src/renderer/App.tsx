@@ -204,7 +204,8 @@ export function App() {
       setBootstrap(state);
       setAccountId((current) => reconcileAccountSelection(current, state.accounts));
     } catch (caught) {
-      setStartupError(errorDetails(caught));
+      // Error properties do not cross the context bridge, so ask for the error code separately.
+      setStartupError((await window.fluxmail.startupError()) ?? errorDetails(caught));
     }
   }, []);
 
