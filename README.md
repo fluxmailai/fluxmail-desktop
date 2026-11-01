@@ -10,7 +10,6 @@ The first release focuses on the work people do every day: a unified inbox, acco
 - Node.js 22.22 or newer
 - pnpm 11.9.0
 - A Google OAuth desktop client for live Gmail use
-- A Microsoft Entra app for live Outlook use
 
 ## Set up the repository
 
@@ -24,7 +23,7 @@ pnpm install
 
 Fluxmail uses the OAuth app included in the installed package by default. To use a different Google OAuth desktop client, copy `.env.example` to `.env` and set `FLUXMAIL_DESKTOP_GOOGLE_CLIENT_ID` and `FLUXMAIL_DESKTOP_GOOGLE_CLIENT_SECRET`. Vite injects these overrides into the Electron main bundle only. They are not available to the renderer. The bundled client uses `gmail.modify`, while a custom client requests full Gmail access. Fluxmail shows permanent deletion only after Google grants that scope. Reconnect accounts that were added before the custom client was configured.
 
-Outlook sign-in needs a Microsoft Entra app that you register yourself. In the app's Authentication settings, add the Mobile and desktop applications platform with the redirect URI `http://localhost:8976/oauth/microsoft/callback` and turn on Allow public client flows. The app does not need a client secret. The first time you connect Outlook, Fluxmail asks for the app's Application (client) ID and saves it in `~/.fluxmail`, where the CLI can use it as well.
+Outlook sign-in uses the Microsoft Entra app included in the installed package by default. To use your own, choose Change Microsoft app while connecting Outlook. In the app's Authentication settings, add the Mobile and desktop applications platform with the redirect URI `http://localhost:8976/oauth/microsoft/callback` and turn on Allow public client flows. The app does not need a client secret. Fluxmail saves the Application (client) ID in `~/.fluxmail`, where the CLI can use it as well.
 
 IMAP accounts need the IMAP and SMTP server names and a password. Fluxmail fills in the usual servers for common providers and tests both connections before it saves the account. iCloud, Yahoo, Gmail, and many other providers require an app-specific password here.
 
