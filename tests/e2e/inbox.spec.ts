@@ -893,9 +893,13 @@ test("uses the desktop bridge for the inbox, secure reading, search, compose, an
     await expect(page.getByRole("option", { name: /subject:/ })).toBeVisible();
     await search.press("Enter");
     await expect(search).toHaveValue("subject:");
+    // Choosing a suggestion restores the cursor on the next frame, which would collapse fill's selection.
+    const nextFrame = () => page.evaluate(() => new Promise(requestAnimationFrame));
+    await nextFrame();
     await search.fill("is:");
     await page.getByRole("option", { name: /is:unread/ }).click();
     await expect(search).toHaveValue("is:unread ");
+    await nextFrame();
     await search.fill("receipt");
     await search.press("Enter");
     await expect(page.getByText("Receipt for Tuesday", { exact: true })).toBeVisible();

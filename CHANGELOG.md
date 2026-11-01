@@ -2,7 +2,28 @@
 
 Fluxmail Desktop records user-facing changes in this file. The format follows [Common Changelog](https://common-changelog.org/).
 
-## [Unreleased](https://github.com/fluxmailai/fluxmail-desktop/compare/v0.7.0...HEAD)
+## [Unreleased](https://github.com/fluxmailai/fluxmail-desktop/compare/v0.8.0...HEAD)
+
+## [0.8.0](https://github.com/fluxmailai/fluxmail-desktop/releases/tag/v0.8.0) - 2026-11-01
+
+_These artifacts use Fluxmail's self-signed certificate and have not been notarized by Apple, so macOS will require approval before opening the app._
+
+### Changed
+
+- Back up the shared Fluxmail data directory before opening Desktop: the bundled Fluxmail 0.20.0 engine moves it to format 7, which Fluxmail CLI versions before 0.17.0 cannot read ([upgrade guide](https://fluxmail.ai/docs/upgrades/0.17.0/))
+- Speed up Outlook bulk moves, permanent deletion, and IMAP listings and searches ([#84](https://github.com/fluxmailai/fluxmail-desktop/pull/84))
+
+### Added
+
+- Connect Outlook without registering a Microsoft Entra app; Desktop uses Fluxmail's built-in app unless you saved your own ([#84](https://github.com/fluxmailai/fluxmail-desktop/pull/84))
+
+### Fixed
+
+- Open Fluxmail data updated by Fluxmail 0.17.0 or later, which Desktop 0.7.0 refused to open ([#84](https://github.com/fluxmailai/fluxmail-desktop/pull/84))
+- Show Gmail messages correctly when UTF-8 text arrives under a single-byte charset header such as ISO-8859-1 ([#84](https://github.com/fluxmailai/fluxmail-desktop/pull/84))
+- Parse recipient addresses correctly when sending through Gmail or SMTP ([#84](https://github.com/fluxmailai/fluxmail-desktop/pull/84))
+- Download attachments with malformed characters in their names instead of failing ([#84](https://github.com/fluxmailai/fluxmail-desktop/pull/84))
+- Stop asking you to reconnect an IMAP account after a DNS or TLS failure ([#84](https://github.com/fluxmailai/fluxmail-desktop/pull/84))
 
 ## [0.7.0](https://github.com/fluxmailai/fluxmail-desktop/releases/tag/v0.7.0) - 2026-10-19
 
