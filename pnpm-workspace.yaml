@@ -29,6 +29,8 @@ minimumReleaseAgeExclude:
   - dompurify@3.4.17
   # Renovate security update: vitest@4.1.11
   - vitest@4.1.11
+  # Renovate security update: zod@4.6.6
+  - zod@4.6.6
 minimumReleaseAgeExcludePrune: true
 trustPolicy: no-downgrade
 trustPolicyExclude:
