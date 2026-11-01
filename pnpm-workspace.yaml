@@ -25,6 +25,8 @@ minimumReleaseAgeExclude:
   - electron@43.8.1
   # Renovate security update: colord@2.9.4
   - colord@2.9.4
+  # Renovate security update: dompurify@3.4.17
+  - dompurify@3.4.17
 minimumReleaseAgeExcludePrune: true
 trustPolicy: no-downgrade
 trustPolicyExclude:
