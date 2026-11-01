@@ -9,53 +9,43 @@ import {
 } from "../shared/contracts";
 
 const preferencesFileSchema = z.discriminatedUnion("version", [
-  z.object({ version: z.literal(1), appearance: appearancePreferenceSchema }).strict(),
-  z
-    .object({
-      version: z.literal(2),
-      appearance: appearancePreferenceSchema,
-      dockBadge: z.boolean(),
-    })
-    .strict(),
-  z
-    .object({
-      version: z.literal(3),
-      appearance: appearancePreferenceSchema,
-      dockBadge: z.boolean(),
-      blockRemoteImages: z.boolean(),
-    })
-    .strict(),
-  z
-    .object({
-      version: z.literal(4),
-      appearance: appearancePreferenceSchema,
-      dockBadge: z.boolean(),
-      blockRemoteImages: z.boolean(),
-      imageRelay: z.boolean(),
-    })
-    .strict(),
-  z
-    .object({
-      version: z.literal(5),
-      appearance: appearancePreferenceSchema,
-      dockBadge: z.boolean(),
-      openNextAfterArchive: z.boolean().optional(),
-      blockRemoteImages: z.boolean(),
-      imageRelay: z.boolean(),
-      undoSendDelaySeconds: undoSendDelaySecondsSchema.optional(),
-    })
-    .strict(),
-  z
-    .object({
-      version: z.literal(6),
-      appearance: appearancePreferenceSchema,
-      dockBadge: z.boolean(),
-      openNextAfterArchive: z.boolean(),
-      blockRemoteImages: z.boolean(),
-      imageRelay: z.boolean(),
-      undoSendDelaySeconds: undoSendDelaySecondsSchema,
-    })
-    .strict(),
+  z.strictObject({ version: z.literal(1), appearance: appearancePreferenceSchema }),
+  z.strictObject({
+    version: z.literal(2),
+    appearance: appearancePreferenceSchema,
+    dockBadge: z.boolean(),
+  }),
+  z.strictObject({
+    version: z.literal(3),
+    appearance: appearancePreferenceSchema,
+    dockBadge: z.boolean(),
+    blockRemoteImages: z.boolean(),
+  }),
+  z.strictObject({
+    version: z.literal(4),
+    appearance: appearancePreferenceSchema,
+    dockBadge: z.boolean(),
+    blockRemoteImages: z.boolean(),
+    imageRelay: z.boolean(),
+  }),
+  z.strictObject({
+    version: z.literal(5),
+    appearance: appearancePreferenceSchema,
+    dockBadge: z.boolean(),
+    openNextAfterArchive: z.boolean().optional(),
+    blockRemoteImages: z.boolean(),
+    imageRelay: z.boolean(),
+    undoSendDelaySeconds: undoSendDelaySecondsSchema.optional(),
+  }),
+  z.strictObject({
+    version: z.literal(6),
+    appearance: appearancePreferenceSchema,
+    dockBadge: z.boolean(),
+    openNextAfterArchive: z.boolean(),
+    blockRemoteImages: z.boolean(),
+    imageRelay: z.boolean(),
+    undoSendDelaySeconds: undoSendDelaySecondsSchema,
+  }),
 ]);
 
 export class DesktopPreferences {

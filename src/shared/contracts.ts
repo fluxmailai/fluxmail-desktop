@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+// Zod compiles object parsers with `new Function`, which the renderer's CSP blocks and reports as a
+// violation. This has to run before any schema is built, because each one reads it when created.
+z.config({ jitless: true });
+
 export const mailboxViewSchema = z.enum([
   "inbox",
   "starred",
@@ -43,7 +47,7 @@ export type ImapServerSettings = z.infer<typeof imapServerSchema>;
 
 /** Passwords may be left blank when reconnecting to keep the saved ones. */
 export const imapConnectInputSchema = z.object({
-  email: z.string().trim().email().max(320),
+  email: z.string().trim().pipe(z.email().max(320)),
   displayName: z.string().trim().max(200).optional(),
   imap: imapServerSchema.extend({ password: z.string().max(1024).optional() }),
   smtp: imapServerSchema.extend({ password: z.string().max(1024).optional() }),
@@ -126,7 +130,7 @@ export type AttachmentInfo = z.infer<typeof attachmentSchema>;
 
 export const addressSchema = z.object({
   name: z.string().optional(),
-  email: z.string().email(),
+  email: z.email(),
 });
 export type Address = z.infer<typeof addressSchema>;
 
@@ -281,7 +285,7 @@ export type DraftRecipientFields = z.infer<typeof draftRecipientFieldsSchema>;
 export const composeInputSchema = z.object({
   accountId: z.string(),
   draftId: z.string().optional(),
-  from: z.string().email().optional(),
+  from: z.email().optional(),
   to: z.array(addressSchema),
   cc: z.array(addressSchema).optional(),
   bcc: z.array(addressSchema).optional(),
@@ -294,7 +298,7 @@ export const composeInputSchema = z.object({
   recipientFields: draftRecipientFieldsSchema.optional(),
 });
 export const sendInputSchema = composeInputSchema.refine((value) => Boolean(value.text?.trim()), {
-  message: "Write a message before sending.",
+  error: "Write a message before sending.",
 });
 export type ComposeInput = z.infer<typeof composeInputSchema>;
 const scheduledSendDelaySecondsSchema = z.union([
@@ -308,7 +312,7 @@ export const mailForwardInputSchema = z
   .object({
     target: threadTargetSchema,
     messageId: z.string(),
-    from: z.string().email().optional(),
+    from: z.email().optional(),
     to: z.array(addressSchema),
     cc: z.array(addressSchema).optional(),
     bcc: z.array(addressSchema).optional(),
@@ -318,15 +322,15 @@ export const mailForwardInputSchema = z
     html: z.string().optional(),
     attachments: z.array(composeAttachmentSchema).max(20).optional(),
     includeAttachments: z.boolean().optional(),
-    sendAt: z.string().datetime().optional(),
+    sendAt: z.iso.datetime().optional(),
     delaySeconds: scheduledSendDelaySecondsSchema.optional(),
   })
   .refine((value) => Boolean(value.to.length || value.cc?.length || value.bcc?.length), {
-    message: "Add at least one recipient before forwarding.",
+    error: "Add at least one recipient before forwarding.",
     path: ["to"],
   })
   .refine((value) => !(value.sendAt && value.delaySeconds), {
-    message: "Choose a send time or an undo delay.",
+    error: "Choose a send time or an undo delay.",
   });
 
 export const draftResultSchema = z.object({
@@ -340,12 +344,12 @@ export const sendResultSchema = z.object({
 export const scheduledSendResultSchema = z.object({
   scheduleId: z.string(),
   draftId: z.string(),
-  sendAt: z.string().datetime(),
+  sendAt: z.iso.datetime(),
 });
 export type ScheduledSendResult = z.infer<typeof scheduledSendResultSchema>;
 export const scheduledSendInputSchema = z.union([
   composeInputSchema.extend({
-    sendAt: z.string().datetime(),
+    sendAt: z.iso.datetime(),
     delaySeconds: z.never().optional(),
   }),
   composeInputSchema.extend({
@@ -429,17 +433,14 @@ export type LicenseActivationResult = z.infer<typeof licenseActivationResultSche
 export const MAX_IMAGE_RELAY_URLS_PER_REQUEST = 200;
 export const imageRelayInputSchema = z
   .array(
-    z
-      .string()
-      .url()
-      .refine((value) => {
-        const protocol = new URL(value).protocol;
-        return protocol === "http:" || protocol === "https:";
-      }),
+    z.url().refine((value) => {
+      const protocol = new URL(value).protocol;
+      return protocol === "http:" || protocol === "https:";
+    }),
   )
   .min(1)
   .max(MAX_IMAGE_RELAY_URLS_PER_REQUEST);
-export const imageRelayResultSchema = z.record(z.string().url());
+export const imageRelayResultSchema = z.record(z.string(), z.url());
 
 export const bootstrapSchema = z.object({
   desktopVersion: z.string(),
@@ -455,6 +456,7 @@ export const bootstrapSchema = z.object({
   draftCount: z.number().int().nonnegative(),
   scheduledCount: z.number().int().nonnegative(),
   countsByAccount: z.record(
+    z.string(),
     z.object({
       unreadCount: z.number().int().nonnegative(),
       draftCount: z.number().int().nonnegative(),
@@ -479,7 +481,7 @@ export const appErrorSchema = z.object({
   code: z.string(),
   message: z.string(),
   retryable: z.boolean(),
-  details: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(),
+  details: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
 });
 export type AppError = z.infer<typeof appErrorSchema>;
 

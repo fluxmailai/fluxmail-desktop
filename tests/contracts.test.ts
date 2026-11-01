@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   appearancePreferenceSchema,
+  appErrorSchema,
   composeInputSchema,
   featureEventSchema,
+  imageRelayInputSchema,
+  imageRelayResultSchema,
   imapConnectInputSchema,
   licenseActivationResultSchema,
   licenseKeySchema,
@@ -27,6 +31,10 @@ import { toEmailQuery } from "../src/main/mail-mapping";
 import { isAllowedFrameUrl } from "../src/main/ipc-security";
 
 describe("desktop contracts", () => {
+  it("keeps Zod from generating code under the renderer CSP", () => {
+    expect(z.config().jitless).toBe(true);
+  });
+
   it("allows bodyless drafts but requires text before sending", () => {
     const subjectOnly = {
       accountId: "account-1",
@@ -189,7 +197,13 @@ describe("desktop contracts", () => {
       smtp: { host: "smtp.example.org", port: 587, security: "starttls", user: "me" },
     };
     expect(imapConnectInputSchema.parse(input)).toEqual(input);
+    expect(imapConnectInputSchema.parse({ ...input, email: "  me@example.com " }).email).toBe(
+      "me@example.com",
+    );
     expect(() => imapConnectInputSchema.parse({ ...input, email: "not-an-email" })).toThrow();
+    expect(() =>
+      imapConnectInputSchema.parse({ ...input, email: `${"a".repeat(320)}@example.com` }),
+    ).toThrow();
     expect(() =>
       imapConnectInputSchema.parse({ ...input, imap: { ...input.imap, port: 70_000 } }),
     ).toThrow();
@@ -308,6 +322,25 @@ describe("desktop contracts", () => {
     });
     expect(message.replyTo).toEqual([{ name: "Richard Chu", email: "someone@gmail.c..." }]);
     expect(message.from?.email).toBe("sender@localhost");
+  });
+
+  it("validates image relay URLs and string-keyed records", () => {
+    expect(imageRelayInputSchema.parse(["https://example.com/a.png"])).toEqual([
+      "https://example.com/a.png",
+    ]);
+    expect(() => imageRelayInputSchema.parse(["ftp://example.com/a.png"])).toThrow();
+    expect(
+      imageRelayResultSchema.parse({ "https://example.com/a.png": "https://cdn.example.com/a" }),
+    ).toEqual({ "https://example.com/a.png": "https://cdn.example.com/a" });
+    expect(() => imageRelayResultSchema.parse({ a: "not-a-url" })).toThrow();
+    expect(
+      appErrorSchema.parse({
+        code: "failed",
+        message: "Failed",
+        retryable: false,
+        details: { status: 500 },
+      }).details,
+    ).toEqual({ status: 500 });
   });
 
   it("still rejects invalid recipients when composing", () => {
