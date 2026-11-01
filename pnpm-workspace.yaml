@@ -31,6 +31,8 @@ minimumReleaseAgeExclude:
   - vitest@4.1.11
   # Renovate security update: zod@4.6.6
   - zod@4.6.6
+  # Renovate security update: vite@7.3.7
+  - vite@7.3.7
 minimumReleaseAgeExcludePrune: true
 trustPolicy: no-downgrade
 trustPolicyExclude:

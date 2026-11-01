@@ -991,6 +991,9 @@ describe("ReadingPane", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reply" }));
     fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
     await screen.findByRole("button", { name: "Remove draft.txt" });
+    await waitFor(() =>
+      expect(paneCallbacks.onQuickReplyDirtyChange).toHaveBeenLastCalledWith(true),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Forward" }));
 
     expect(confirmDiscard).toHaveBeenCalledWith("Discard this unsent message?");
