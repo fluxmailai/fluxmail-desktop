@@ -23,6 +23,7 @@ minimumReleaseAgeExclude:
   - nodemailer@10.3.1
   # Renovate security update: electron@43.8.1
   - electron@43.8.1
+minimumReleaseAgeExcludePrune: true
 trustPolicy: no-downgrade
 trustPolicyExclude:
   - semver@5.7.2
