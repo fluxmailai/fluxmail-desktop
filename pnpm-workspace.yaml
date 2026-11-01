@@ -27,6 +27,8 @@ minimumReleaseAgeExclude:
   - colord@2.9.4
   # Renovate security update: dompurify@3.4.17
   - dompurify@3.4.17
+  # Renovate security update: vitest@4.1.11
+  - vitest@4.1.11
 minimumReleaseAgeExcludePrune: true
 trustPolicy: no-downgrade
 trustPolicyExclude:
