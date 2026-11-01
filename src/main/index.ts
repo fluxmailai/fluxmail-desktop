@@ -635,7 +635,7 @@ function registerIpc(): void {
   handle(IPC.analyticsFeature, featureEventSchema, z.void(), async (event) =>
     requireAnalytics().captureFeature(event),
   );
-  handle(IPC.systemOpenExternal, z.string().url(), z.void(), openTrustedExternal);
+  handle(IPC.systemOpenExternal, z.url(), z.void(), openTrustedExternal);
   handle(IPC.systemOpenLegalNotices, z.undefined(), z.void(), () =>
     openLegalNotices({
       isPackaged: app.isPackaged,
@@ -687,7 +687,7 @@ async function shutdownAndExit(): Promise<void> {
   else app.exit(0);
 }
 
-function handle<TSchema extends z.ZodTypeAny, TResultSchema extends z.ZodTypeAny>(
+function handle<TSchema extends z.ZodType, TResultSchema extends z.ZodType>(
   channel: string,
   schema: TSchema,
   resultSchema: TResultSchema,

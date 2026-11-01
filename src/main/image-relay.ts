@@ -7,13 +7,10 @@ export const IMAGE_RELAY_ORIGIN = "https://cdn.fluxmail.workers.dev";
 
 const MAX_URLS_PER_REQUEST = 50;
 const MAX_CACHED_URLS = 5_000;
-const relayUrlSchema = z
-  .string()
-  .url()
-  .refine((value) => new URL(value).origin === IMAGE_RELAY_ORIGIN);
+const relayUrlSchema = z.url().refine((value) => new URL(value).origin === IMAGE_RELAY_ORIGIN);
 const signedResponseSchema = z.object({
-  signedUrls: z.record(relayUrlSchema),
-  requestedUrls: z.record(relayUrlSchema),
+  signedUrls: z.record(z.string(), relayUrlSchema),
+  requestedUrls: z.record(z.string(), relayUrlSchema),
   expiresAt: z.number().int().positive(),
 });
 const accessTokenResponseSchema = z.object({
