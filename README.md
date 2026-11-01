@@ -8,7 +8,7 @@ The first release focuses on the work people do every day: a unified inbox, acco
 
 - macOS 13 or newer
 - Node.js 22.22 or newer
-- pnpm 11.9.0
+- pnpm 11.28.8
 - A Google OAuth desktop client for live Gmail use
 
 ## Set up the repository
