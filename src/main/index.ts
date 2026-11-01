@@ -201,7 +201,10 @@ app.on("before-quit", (event) => {
     event.preventDefault();
     return;
   }
-  if (!runtime || !analytics || !cache) return;
+  if (!runtime || !analytics || !cache) {
+    windowCloseConfirmed = true;
+    return;
+  }
   event.preventDefault();
   quitAfterWindowClose = true;
   if (mainWindow) mainWindow.close();
@@ -402,6 +405,9 @@ function registerAppProtocol(): void {
 }
 
 function registerIpc(): void {
+  handle(IPC.startupError, z.undefined(), appErrorSchema.nullable(), () =>
+    startupError ? publicErrorPayload(startupError) : null,
+  );
   handle(IPC.bootstrap, z.undefined(), bootstrapSchema, async () => {
     if (startupError) throw startupError;
     await disableImageRelayIfUnavailable();

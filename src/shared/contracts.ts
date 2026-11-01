@@ -538,6 +538,7 @@ export type AppEvent = z.infer<typeof appEventSchema>;
 
 export interface FluxmailDesktopApi {
   bootstrap(): Promise<BootstrapState>;
+  startupError(): Promise<AppError | null>;
   accounts: {
     list(): Promise<AccountInfo[]>;
     connect(provider: OAuthProvider): Promise<AccountInfo>;
@@ -636,6 +637,7 @@ export interface FluxmailDesktopApi {
 
 export const IPC = {
   bootstrap: "fluxmail:bootstrap",
+  startupError: "fluxmail:startup-error",
   accountsList: "fluxmail:accounts:list",
   accountsConnect: "fluxmail:accounts:connect",
   accountsConnectImap: "fluxmail:accounts:connect-imap",

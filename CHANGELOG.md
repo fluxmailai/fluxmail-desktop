@@ -6,6 +6,8 @@ Fluxmail Desktop records user-facing changes in this file. The format follows [C
 
 ### Fixed
 
+- Ask you to update Fluxmail, instead of showing a general error, when your data comes from a newer version
+- Quit and restart properly from the startup error screen
 - Stop the macOS Keychain password prompt when opening an email after an update
 
 ## [0.8.0](https://github.com/fluxmailai/fluxmail-desktop/releases/tag/v0.8.0) - 2026-11-01
