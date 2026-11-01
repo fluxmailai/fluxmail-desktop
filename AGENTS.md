@@ -6,7 +6,7 @@ Run `pnpm test:e2e` locally before finishing changes that affect user flows, Ele
 
 # Dependency updates
 
-Renovate opens the dependency PRs. `pnpm notices:check` fails on any PR that changes production packages, so check out the branch, run `pnpm notices:generate`, and push the result. If the script stops on a package, review its license and update the exact-version exception in `scripts/generate-third-party-notices.mjs`.
+Renovate opens the dependency PRs. CI and packaging run `pnpm notices:generate`, which writes `THIRD_PARTY_NOTICES.md` and `licenses/ELECTRON_LICENSE`. Git ignores both files. If the script stops on a package, review its license and update the exact-version exception in `scripts/generate-third-party-notices.mjs`.
 
 Run `pnpm test:e2e` locally before merging a Renovate PR that updates Electron or Electron Forge.
 

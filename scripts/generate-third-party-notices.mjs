@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -8,7 +8,6 @@ const outputPath = path.join(repositoryRoot, "THIRD_PARTY_NOTICES.md");
 const electronLicenseSource = path.join(repositoryRoot, "node_modules/electron/LICENSE");
 const electronLicenseOutput = path.join(repositoryRoot, "licenses", "ELECTRON_LICENSE");
 const licenseFallbacksPath = path.join(repositoryRoot, "scripts", "third-party-license-fallbacks");
-const checkOnly = process.argv.includes("--check");
 const excludedPackages = new Set(["fluxmail"]);
 // Native Argon2 packages share @node-rs/argon2's project and license.
 // Keeping their notice under the parent avoids architecture-specific output.
@@ -385,19 +384,6 @@ Declared license: ${entry.license}${project}${licenseText}
   return `${header.trimEnd()}\n\n${entries.join("\n")}`;
 }
 
-const notices = renderNotices(productionPackages());
-const electronLicense = readFileSync(electronLicenseSource, "utf8");
-if (checkOnly) {
-  if (!existsSync(outputPath) || readFileSync(outputPath, "utf8") !== notices) {
-    throw new Error("THIRD_PARTY_NOTICES.md is out of date. Run pnpm notices:generate.");
-  }
-  if (
-    !existsSync(electronLicenseOutput) ||
-    readFileSync(electronLicenseOutput, "utf8") !== electronLicense
-  ) {
-    throw new Error("ELECTRON_LICENSE is out of date. Run pnpm notices:generate.");
-  }
-} else {
-  writeFileSync(outputPath, notices);
-  writeFileSync(electronLicenseOutput, electronLicense);
-}
+writeFileSync(outputPath, renderNotices(productionPackages()));
+mkdirSync(path.dirname(electronLicenseOutput), { recursive: true });
+writeFileSync(electronLicenseOutput, readFileSync(electronLicenseSource, "utf8"));

@@ -166,7 +166,7 @@ Build the exact candidate tree in a temporary clean clone before running tests. 
 ```sh
 pnpm install --frozen-lockfile
 .agents/skills/release/scripts/verify-clean-install.sh
-pnpm notices:check
+pnpm notices:generate
 pnpm format:check
 pnpm lint
 pnpm typecheck
