@@ -1,7 +1,9 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+execFileSync("node", ["scripts/generate-third-party-notices.mjs"]);
 const notices = readFileSync(path.join(process.cwd(), "THIRD_PARTY_NOTICES.md"), "utf8");
 
 function noticeFor(packageName: string): string {

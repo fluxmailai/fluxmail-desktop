@@ -157,9 +157,7 @@ const config: ForgeConfig = {
   rebuildConfig: { force: true, ignoreModules: ["better-sqlite3"] },
   hooks: {
     async generateAssets() {
-      await runFile("node", ["scripts/generate-third-party-notices.mjs", "--check"], {
-        cwd: process.cwd(),
-      });
+      await runFile("node", ["scripts/generate-third-party-notices.mjs"], { cwd: process.cwd() });
       await runFile("bash", ["scripts/generate-icon.sh"], { cwd: process.cwd() });
       await runFile("swift", ["scripts/generate-dmg-background.swift"], { cwd: process.cwd() });
     },

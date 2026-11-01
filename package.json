@@ -11,7 +11,6 @@
     "make": "electron-forge make",
     "release:notes": "node scripts/release-notes.mjs",
     "notices:generate": "node scripts/generate-third-party-notices.mjs",
-    "notices:check": "node scripts/generate-third-party-notices.mjs --check",
     "lint": "oxlint src tests scripts",
     "format": "oxfmt \"src/**/*\" \"tests/**/*\" \"scripts/**/*.mjs\" README.md CHANGELOG.md \"docs/**/*\" \".github/**/*\" \"*.json\" \"*.ts\" \"*.html\" \"*.css\"",
     "format:check": "oxfmt --check \"src/**/*\" \"tests/**/*\" \"scripts/**/*.mjs\" README.md CHANGELOG.md \"docs/**/*\" \".github/**/*\" \"*.json\" \"*.ts\" \"*.html\" \"*.css\"",
