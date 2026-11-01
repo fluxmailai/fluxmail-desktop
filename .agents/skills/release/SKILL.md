@@ -155,7 +155,9 @@ For an ad hoc-signed release, include this notice:
 
 Adjust `First release` for later versions. Do not claim that ad hoc signing prevents all Gatekeeper prompts.
 
-For a self-signed release, replace `ad hoc signatures` with `Fluxmail's self-signed certificate`. State that Apple has not notarized the artifacts and macOS will still require approval. Do not claim that a self-signed certificate makes Gatekeeper trust the app. Note during handoff that the first self-signed build may prompt once for existing Keychain items before later builds inherit access.
+For a self-signed release, replace `ad hoc signatures` with `Fluxmail's self-signed certificate`. State that Apple has not notarized the artifacts and macOS will still require approval. Do not claim that a self-signed certificate makes Gatekeeper trust the app.
+
+Self-signed builds get a `cdhash:` Keychain partition, so every new version loses access to existing Keychain items, even with the same certificate. Always Allow does not carry over to the next version. Do not add Keychain use to a self-signed build: `safeStorage` and the `EnableCookieEncryption` fuse both prompt for a password after each update.
 
 ## 4. Run the release preflight
 

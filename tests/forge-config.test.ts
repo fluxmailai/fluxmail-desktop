@@ -1,3 +1,5 @@
+import { FusesPlugin } from "@electron-forge/plugin-fuses";
+import { FuseV1Options } from "@electron/fuses";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -124,6 +126,14 @@ describe("Forge package filtering", () => {
         APPLE_API_KEY: "/tmp/AuthKey.p8",
       }),
     ).toThrow("Set all three Apple notarization variables or remove all of them.");
+  });
+
+  it("keeps cookie encryption off so updates do not trigger Keychain prompts", () => {
+    const fuses = forgeConfig.plugins?.find(
+      (plugin): plugin is FusesPlugin => plugin instanceof FusesPlugin,
+    );
+
+    expect(fuses?.fusesConfig[FuseV1Options.EnableCookieEncryption]).toBe(false);
   });
 
   it("uses Fluxmail artwork and a centered DMG layout", () => {
