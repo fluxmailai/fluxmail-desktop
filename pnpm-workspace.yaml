@@ -14,9 +14,15 @@ allowBuilds:
   fs-xattr: true
   macos-alias: true
 
+# Keep Renovate's minimumReleaseAge at least this long. To ship an urgent fix
+# sooner, add the exact version to minimumReleaseAgeExclude.
+minimumReleaseAge: 10080
 minimumReleaseAgeExclude:
-  - '@fluxmail/core@0.20.0'
-  - '@fluxmail/provider-gmail@0.20.0'
-  - '@fluxmail/provider-imap@0.20.0'
-  - '@fluxmail/provider-outlook@0.20.0'
-  - fluxmail@0.20.0
+  - '@fluxmail/*'
+  - fluxmail
+  - nodemailer@10.3.1
+trustPolicy: no-downgrade
+trustPolicyExclude:
+  - semver@5.7.2
+  - semver@6.3.1
+  - undici-types@6.21.0
