@@ -18,6 +18,8 @@ describe("startup error state", () => {
           message: "Fluxmail could not open your mail.",
           retryable: true,
         }}
+        updateReady={false}
+        onInstallUpdate={vi.fn()}
       />,
     );
 
@@ -41,6 +43,8 @@ describe("startup error state", () => {
           message: "Update Fluxmail Desktop to continue. Your data was not changed.",
           retryable: false,
         }}
+        updateReady={false}
+        onInstallUpdate={vi.fn()}
       />,
     );
 

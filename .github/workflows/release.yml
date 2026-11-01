@@ -142,7 +142,9 @@ jobs:
           node scripts/release-notes.mjs "${GITHUB_REF_NAME}" \
             --signing-mode "$signing_mode" > "$RUNNER_TEMP/release-notes.md"
 
-          mapfile -d '' artifacts < <(find release -type f \( -name '*.dmg' -o -name '*.zip' \) -print0)
+          node scripts/update-manifests.mjs "${GITHUB_REF_NAME}" release
+
+          mapfile -d '' artifacts < <(find release -type f \( -name '*.dmg' -o -name '*.zip' -o -name 'RELEASES-darwin-*.json' \) -print0)
           test "${#artifacts[@]}" -gt 0
           gh release create "${GITHUB_REF_NAME}" "${artifacts[@]}" \
             --verify-tag \

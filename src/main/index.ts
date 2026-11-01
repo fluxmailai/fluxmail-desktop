@@ -5,6 +5,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   app,
+  autoUpdater,
   BrowserWindow,
   clipboard,
   dialog,
@@ -88,6 +89,7 @@ import { isAllowedFrameUrl } from "./ipc-security";
 import { HostedImageRelay, HostedImageRelayAccess } from "./image-relay";
 import { createLaunchTimer } from "./performance";
 import { DesktopPreferences } from "./preferences";
+import { DesktopUpdater } from "./updater";
 
 app.setName("Fluxmail");
 
@@ -111,6 +113,7 @@ let runtime: FluxmailRuntime | FakeFluxmailRuntime | null = null;
 let analytics: DesktopAnalytics | null = null;
 let cache: MailCache | null = null;
 let preferences: DesktopPreferences | null = null;
+let updater: DesktopUpdater | null = null;
 let imageRelay: HostedImageRelay | null = null;
 let imageRelayAccess: HostedImageRelayAccess | null = null;
 let pollTimer: NodeJS.Timeout | undefined;
@@ -120,6 +123,7 @@ let rendererReady = false;
 let windowCloseConfirmed = false;
 let windowClosePending = false;
 let quitAfterWindowClose = false;
+let installUpdateOnExit = false;
 let shutdownStarted = false;
 let inboxPerformanceCaptured = false;
 let attachmentGeneration = 0;
@@ -181,6 +185,7 @@ if (!app.requestSingleInstanceLock()) {
       registerIpc();
       createWindow();
       configureApplicationMenu();
+      startUpdater();
       if (!startupError) {
         void refresh("startup");
         powerMonitor.on("resume", () => void refresh("resume"));
@@ -197,6 +202,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", (event) => {
+  if (updater?.installing) return;
   if (shutdownStarted) {
     event.preventDefault();
     return;
@@ -207,6 +213,19 @@ app.on("before-quit", (event) => {
   if (mainWindow) mainWindow.close();
   else void shutdownAndExit();
 });
+
+function startUpdater(): void {
+  if (process.platform !== "darwin" || !app.isPackaged || !app.isInApplicationsFolder()) return;
+  updater = new DesktopUpdater(autoUpdater, {
+    arch: process.arch,
+    onReady: () => sendEvent({ type: "update-ready" }),
+    onInstallFailed: () => {
+      app.relaunch();
+      app.exit(0);
+    },
+  });
+  updater.start();
+}
 
 async function createServices(): Promise<void> {
   const fluxmailDataDir = process.env.FLUXMAIL_DATA_DIR!;
@@ -622,12 +641,23 @@ function registerIpc(): void {
   handle(IPC.systemWindowCloseCancel, z.undefined(), z.void(), () => {
     windowClosePending = false;
     quitAfterWindowClose = false;
+    installUpdateOnExit = false;
   });
   handle(IPC.systemWindowCloseConfirm, z.undefined(), z.void(), () => {
     if (!windowClosePending || !mainWindow) return;
     windowClosePending = false;
     windowCloseConfirmed = true;
     mainWindow.close();
+  });
+  handle(IPC.systemUpdateReady, z.undefined(), z.boolean(), () => updater?.ready ?? false);
+  handle(IPC.systemInstallUpdate, z.undefined(), z.void(), () => {
+    if (!updater?.ready) return;
+    if (!runtime || !analytics || !cache) {
+      updater.install();
+      return;
+    }
+    installUpdateOnExit = true;
+    app.quit();
   });
   handle(IPC.systemRestart, z.undefined(), z.void(), () => {
     app.relaunch();
@@ -647,7 +677,8 @@ async function shutdownAndExit(): Promise<void> {
   cache = null;
   await Promise.allSettled([currentRuntime.shutdown(), currentAnalytics.shutdown()]);
   currentCache.close();
-  app.exit(0);
+  if (installUpdateOnExit && updater) updater.install();
+  else app.exit(0);
 }
 
 function handle<TSchema extends z.ZodTypeAny, TResultSchema extends z.ZodTypeAny>(

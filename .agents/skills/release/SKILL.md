@@ -300,7 +300,7 @@ Confirm:
 - The tag matches the requested version and still resolves to the recorded release SHA.
 - The release is published, not a draft or prerelease.
 - The body exactly matches the committed Common Changelog entry and has no contributor sections.
-- There are two DMGs and two ZIPs.
+- There are two DMGs, two ZIPs, and two `RELEASES-darwin-<arch>.json` update manifests.
 - Both `arm64` and `x64` artifacts are present.
 - Every asset has a nonzero size and an uploaded state.
 - The artifact verifier passes archive integrity, architecture, signing, designated-requirement, and isolated launch checks for both architectures.

@@ -162,6 +162,8 @@ const api: FluxmailDesktopApi = {
   system: {
     openExternal: (url) => invoke(IPC.systemOpenExternal, url, z.string().url(), z.void()),
     openLegalNotices: () => invoke(IPC.systemOpenLegalNotices, undefined, z.undefined(), z.void()),
+    updateReady: () => invoke(IPC.systemUpdateReady, undefined, z.undefined(), z.boolean()),
+    installUpdate: () => invoke(IPC.systemInstallUpdate, undefined, z.undefined(), z.void()),
     cancelWindowClose: () =>
       invoke(IPC.systemWindowCloseCancel, undefined, z.undefined(), z.void()),
     confirmWindowClose: () =>

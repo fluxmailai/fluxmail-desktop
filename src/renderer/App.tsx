@@ -69,6 +69,7 @@ export function App() {
   const [deliveryNotices, setDeliveryNotices] = useState<DeliveryNotice[]>([]);
   const [actionNotice, setActionNotice] = useState<string>();
   const [startupError, setStartupError] = useState<AppError>();
+  const [updateReady, setUpdateReady] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(228);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [listWidth, setListWidth] = useState(410);
@@ -430,11 +431,18 @@ export function App() {
   }, [accountId, bootstrap?.accounts.length, label, submittedSearch, view]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    void window.fluxmail.system.updateReady().then((ready) => {
+      if (ready) setUpdateReady(true);
+    });
+  }, []);
+
+  useEffect(() => {
     const unsubscribe = window.fluxmail.onEvent((event: AppEvent) => {
       if (event.type === "sync-status")
         setBootstrap((current) => (current ? { ...current, sync: event.state } : current));
       if (event.type === "accounts-changed" || event.type === "license-changed")
         void loadBootstrap();
+      if (event.type === "update-ready") setUpdateReady(true);
       if (
         event.type === "find-in-conversation-requested" &&
         selectedThread &&
@@ -948,7 +956,12 @@ export function App() {
     view,
   ]);
 
-  if (!bootstrap) return <Splash error={startupError} />;
+  const installUpdate = () => void window.fluxmail.system.installUpdate();
+
+  if (!bootstrap)
+    return (
+      <Splash error={startupError} updateReady={updateReady} onInstallUpdate={installUpdate} />
+    );
   // The first account appears in bootstrap before the setup dialog finishes, so
   // keep onboarding up until the user dismisses any connection warnings.
   if (!bootstrap.accounts.length || accountSetupOpen) {
@@ -988,7 +1001,9 @@ export function App() {
         onAccountChange={changeAccount}
         onViewChange={changeView}
         onCompose={openCompose}
+        updateReady={updateReady}
         onSettings={() => setSettingsOpen(true)}
+        onInstallUpdate={installUpdate}
         onToggleCollapsed={() => setSidebarCollapsed((value) => !value)}
       />
       {sidebarCollapsed ? (
@@ -1372,7 +1387,15 @@ export function replySeed(thread: ThreadSummary): ComposeSeed {
   };
 }
 
-export function Splash({ error }: { error?: AppError }) {
+export function Splash({
+  error,
+  updateReady,
+  onInstallUpdate,
+}: {
+  error?: AppError;
+  updateReady: boolean;
+  onInstallUpdate(): void;
+}) {
   const incompatible = error?.code === "incompatible_store";
   return (
     <div className="splash">
@@ -1383,7 +1406,11 @@ export function Splash({ error }: { error?: AppError }) {
         {error ? (incompatible ? "Update Fluxmail to continue" : "An error occurred") : "Fluxmail"}
       </h1>
       <p>{error?.message || "Opening your mail..."}</p>
-      {error ? (
+      {error && updateReady ? (
+        <button type="button" className="primary-button splash-restart" onClick={onInstallUpdate}>
+          Restart to update
+        </button>
+      ) : error ? (
         <button
           type="button"
           className="secondary-button splash-restart"

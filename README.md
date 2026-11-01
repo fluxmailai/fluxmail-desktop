@@ -102,7 +102,11 @@ Developer ID signing and notarization also require these three secrets:
 
 Leave all Apple secrets unset to build with ad hoc signatures. Set only the signing group for persistent self-signed releases. Set both complete groups for Developer ID signing, hardened runtime, and notarization. The workflow rejects partial groups. macOS requires users to approve both ad hoc and self-signed apps before opening them.
 
-The workflow attaches both architectures to the GitHub Release that matches the pushed tag. Unnotarized releases include a warning in their release notes.
+The workflow attaches both architectures and their update manifests to the GitHub Release that matches the pushed tag. Unnotarized releases include a warning in their release notes.
+
+## Updates
+
+Fluxmail in the Applications folder checks GitHub Releases at launch and every six hours, downloads new versions in the background, and shows **Restart to update** in the sidebar. Fluxmail rejects any update that isn't signed with the same certificate as the installed app.
 
 ## License
 

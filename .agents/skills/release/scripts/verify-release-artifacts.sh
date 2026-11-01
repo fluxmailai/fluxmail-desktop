@@ -259,6 +259,8 @@ artifact_names=(
   "Fluxmail-${version}-x64.dmg"
   "Fluxmail-darwin-arm64-${version}.zip"
   "Fluxmail-darwin-x64-${version}.zip"
+  "RELEASES-darwin-arm64.json"
+  "RELEASES-darwin-x64.json"
 )
 artifact_paths=()
 
@@ -350,10 +352,10 @@ if [[ -n "$github_tag" ]]; then
   [[ "$(jq -r '.tagName' <<<"$github_metadata")" == "$github_tag" ]]
   [[ "$(jq -r '.isDraft' <<<"$github_metadata")" == "false" ]]
   [[ "$(jq -r '.isPrerelease' <<<"$github_metadata")" == "false" ]]
-  [[ "$(jq '.assets | length' <<<"$github_metadata")" == "4" ]]
+  [[ "$(jq '.assets | length' <<<"$github_metadata")" == "6" ]]
 fi
 
-for artifact_index in 0 1 2 3; do
+for artifact_index in "${!artifact_names[@]}"; do
   artifact_name="${artifact_names[$artifact_index]}"
   artifact_path="${artifact_paths[$artifact_index]}"
   digest="sha256:$(shasum -a 256 "$artifact_path" | awk '{print $1}')"
@@ -371,6 +373,17 @@ for artifact_index in 0 1 2 3; do
   fi
 
   printf '%s  %s  %s bytes\n' "$digest" "$artifact_name" "$byte_size"
+done
+
+for architecture in arm64 x64; do
+  manifest_path="$(find_artifact "RELEASES-darwin-${architecture}.json")"
+  manifest_url="https://github.com/fluxmailai/fluxmail-desktop/releases/download/v${version}/Fluxmail-darwin-${architecture}-${version}.zip"
+  if ! jq -e --arg version "$version" --arg url "$manifest_url" \
+    '.currentRelease == $version and .releases[0].version == $version and .releases[0].updateTo.url == $url' \
+    "$manifest_path" >/dev/null; then
+    echo "Update manifest does not match Fluxmail ${version}: $manifest_path" >&2
+    exit 1
+  fi
 done
 
 echo "Release artifact verification passed for Fluxmail ${version} (${signing_mode})."

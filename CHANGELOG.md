@@ -4,6 +4,10 @@ Fluxmail Desktop records user-facing changes in this file. The format follows [C
 
 ## [Unreleased](https://github.com/fluxmailai/fluxmail-desktop/compare/v0.8.0...HEAD)
 
+### Added
+
+- Download new versions in the background and show Restart to update in the sidebar, so later updates no longer need a manual install and macOS approval
+
 ### Fixed
 
 - Stop the macOS Keychain password prompt when opening an email after an update
