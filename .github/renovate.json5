@@ -1,0 +1,50 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: ["config:best-practices", "schedule:weekly", "group:allNonMajor"],
+  // Dev dependencies keep the ranges used across the repo.
+  ignorePresets: [":pinDevDependencies"],
+  labels: ["dependencies"],
+  semanticCommits: "enabled",
+  postUpdateOptions: ["pnpmDedupe"],
+  major: {
+    dependencyDashboardApproval: true,
+  },
+  packageRules: [
+    {
+      matchManagers: ["npm"],
+      rangeStrategy: "bump",
+    },
+    {
+      // Overrides the shorter default from config:best-practices. Keep this
+      // at least as long as minimumReleaseAge in pnpm-workspace.yaml.
+      matchDatasources: ["npm"],
+      minimumReleaseAge: "7 days",
+    },
+    {
+      // These match the minimum Node.js version Fluxmail requires.
+      matchDepNames: ["node"],
+      matchDepTypes: ["engines", "uses-with"],
+      enabled: false,
+    },
+    {
+      // We publish these, so they skip the release age wait. fluxmail pins
+      // @fluxmail/core to an exact version, so they need to move together.
+      matchPackageNames: ["fluxmail", "@fluxmail/**"],
+      groupName: "Fluxmail",
+      groupSlug: "fluxmail",
+      minimumReleaseAge: null,
+    },
+    {
+      // CI doesn't run the Electron suite or package the app, so run
+      // pnpm test:e2e locally before merging these.
+      matchPackageNames: ["electron", "@electron/**", "@electron-forge/**"],
+      groupName: "Electron",
+      groupSlug: "electron",
+    },
+    {
+      // fluxmail pins this exact version. Update it with fluxmail.
+      matchPackageNames: ["google-auth-library"],
+      enabled: false,
+    },
+  ],
+}
