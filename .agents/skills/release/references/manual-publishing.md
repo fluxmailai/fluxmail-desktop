@@ -86,7 +86,7 @@ For a self-signed build, require all of the following:
 - `codesign -d -r-` contains the bundle identifier and the persistent certificate hash
 - The designated requirement is identical across `arm64` and `x64` builds
 
-Do not replace the persistent certificate when rebuilding. A new private key changes the designated requirement and causes macOS Keychain to treat the app as a different program.
+Do not replace the persistent certificate when rebuilding. A new private key changes the designated requirement, so installed apps reject the update and macOS Keychain treats the app as a different program.
 
 Launch each packaged app with isolated temporary data and user-data directories. Keep it running long enough to detect an immediate dyld or native-module crash, then terminate it cleanly. On Apple Silicon, confirm Rosetta is available before testing the x64 app:
 
@@ -98,9 +98,10 @@ Do not substitute `open Fluxmail.app` for the packaged app smoke test. Launch th
 
 ## Verify the archives
 
-Run the bundled verifier against all four artifacts before uploading:
+Generate the update manifests, then run the bundled verifier against all six artifacts before uploading:
 
 ```sh
+node scripts/update-manifests.mjs "<tag>" out/make
 .agents/skills/release/scripts/verify-release-artifacts.sh \
   "<version>" out/make "<signing-mode>"
 ```
@@ -125,7 +126,7 @@ Do not publish instructions to strip quarantine as the release fix. Removing qua
 
 ## Publish a new release manually
 
-Confirm the remote tag and its peeled commit one final time. Render the committed changelog entry to a temporary file, then create the release with the four verified files:
+Confirm the remote tag and its peeled commit one final time. Render the committed changelog entry to a temporary file, then create the release with the six verified files:
 
 ```sh
 notes_path=$(mktemp)
@@ -137,6 +138,8 @@ gh release create "<tag>" \
   out/make/Fluxmail-<version>-x64.dmg \
   out/make/zip/darwin/arm64/Fluxmail-darwin-arm64-<version>.zip \
   out/make/zip/darwin/x64/Fluxmail-darwin-x64-<version>.zip \
+  out/make/RELEASES-darwin-arm64.json \
+  out/make/RELEASES-darwin-x64.json \
   --verify-tag \
   --notes-file "$notes_path"
 ```
@@ -151,10 +154,10 @@ Before replacement:
 
 1. Record the local tag commit, remote tag object, and remote peeled commit.
 2. Read the release body and asset metadata.
-3. Verify the four local replacements and their canonical filenames.
+3. Verify the six local replacements and their canonical filenames.
 4. Prepare and commit the updated Common Changelog entry, including the correct signing notice.
 
-Replace all four architecture artifacts together so the release has one consistent signing and packaging policy:
+Replace all six artifacts together so the release has one consistent signing and packaging policy:
 
 ```sh
 gh release upload "<tag>" \
@@ -162,6 +165,8 @@ gh release upload "<tag>" \
   out/make/Fluxmail-<version>-x64.dmg \
   out/make/zip/darwin/arm64/Fluxmail-darwin-arm64-<version>.zip \
   out/make/zip/darwin/x64/Fluxmail-darwin-x64-<version>.zip \
+  out/make/RELEASES-darwin-arm64.json \
+  out/make/RELEASES-darwin-x64.json \
   --clobber
 
 notes_path=$(mktemp)
@@ -172,7 +177,7 @@ gh release edit "<tag>" --notes-file "$notes_path"
 
 ## Verify GitHub after publishing
 
-Read the final release metadata. Require exactly four uploaded assets with the expected names:
+Read the final release metadata. Require exactly six uploaded assets with the expected names:
 
 ```sh
 gh release view "<tag>" \

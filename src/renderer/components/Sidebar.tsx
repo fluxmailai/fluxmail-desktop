@@ -8,6 +8,7 @@ import {
   Mail,
   PanelLeft,
   Pencil,
+  RefreshCw,
   Send,
   Settings,
   ShieldAlert,
@@ -30,10 +31,12 @@ interface SidebarProps {
   draftCount: number;
   scheduledCount: number;
   collapsed: boolean;
+  updateReady: boolean;
   onAccountChange(value?: string): void;
   onViewChange(view: MailboxView, label?: string): void;
   onCompose(): void;
   onSettings(): void;
+  onInstallUpdate(): void;
   onToggleCollapsed(): void;
 }
 
@@ -163,6 +166,12 @@ export function Sidebar(props: SidebarProps) {
         <OverlayScrollbar scroller={scroller} fadeClass="sidebar-fade" />
       </div>
       <div className="sidebar-footer">
+        {props.updateReady ? (
+          <button type="button" className="sidebar-update-button" onClick={props.onInstallUpdate}>
+            <RefreshCw size={14} />
+            Restart to update
+          </button>
+        ) : null}
         <IconButton
           label="Settings"
           className="sidebar-footer-button"

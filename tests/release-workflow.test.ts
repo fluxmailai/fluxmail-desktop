@@ -17,4 +17,11 @@ describe("Release workflow", () => {
     expect(releaseWorkflow).toContain('--notes-file "$RUNNER_TEMP/release-notes.md"');
     expect(releaseWorkflow).not.toContain("--generate-notes");
   });
+
+  it("publishes the update manifests with the release", () => {
+    expect(releaseWorkflow).toContain(
+      'node scripts/update-manifests.mjs "${GITHUB_REF_NAME}" release',
+    );
+    expect(releaseWorkflow).toContain("-name 'RELEASES-darwin-*.json'");
+  });
 });

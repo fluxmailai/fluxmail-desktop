@@ -17,9 +17,13 @@ const composeDeliverySequence = vi.hoisted(() => ({ current: 0 }));
 
 vi.mock("../src/renderer/components/Sidebar", () => ({
   Sidebar: ({
+    updateReady,
+    onInstallUpdate,
     onSettings,
     onViewChange,
   }: {
+    updateReady: boolean;
+    onInstallUpdate(): void;
     onSettings(): void;
     onViewChange(view: "starred" | "all" | "drafts" | "scheduled"): void;
   }) => (
@@ -30,6 +34,7 @@ vi.mock("../src/renderer/components/Sidebar", () => ({
       <button onClick={() => onViewChange("drafts")}>Drafts</button>
       <button onClick={() => onViewChange("scheduled")}>Scheduled</button>
       <button onClick={onSettings}>Settings</button>
+      {updateReady ? <button onClick={onInstallUpdate}>Restart to update</button> : null}
     </aside>
   ),
 }));
@@ -543,6 +548,55 @@ describe("App thread navigation", () => {
 
     await waitFor(() => expect(closeDraft).toHaveBeenCalled());
     expect(screen.getByText(`Reading ${first.subject}`)).toBeTruthy();
+  });
+
+  it("offers to restart once an update is ready", async () => {
+    const events = installApi(
+      [],
+      vi.fn(async () => mailThread(thread("thread", "Thread", false))),
+    );
+    installMatchMedia();
+    render(<App />);
+    await screen.findByText("0 conversations");
+    expect(screen.queryByRole("button", { name: "Restart to update" })).toBeNull();
+
+    act(() => events.emit({ type: "update-ready" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restart to update" }));
+
+    expect(window.fluxmail.system.installUpdate).toHaveBeenCalledOnce();
+  });
+
+  it("shows an update that finished downloading before the window opened", async () => {
+    installApi(
+      [],
+      vi.fn(async () => mailThread(thread("thread", "Thread", false))),
+    );
+    vi.mocked(window.fluxmail.system.updateReady).mockResolvedValue(true);
+    installMatchMedia();
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "Restart to update" })).toBeTruthy();
+  });
+
+  it("offers the update when an incompatible store stops startup", async () => {
+    const events = installApi(
+      [],
+      vi.fn(async () => mailThread(thread("thread", "Thread", false))),
+    );
+    vi.mocked(window.fluxmail.bootstrap).mockRejectedValue(
+      Object.assign(new Error("Update Fluxmail Desktop to continue."), {
+        code: "incompatible_store",
+      }),
+    );
+    installMatchMedia();
+    render(<App />);
+    await screen.findByRole("button", { name: "Try again" });
+
+    act(() => events.emit({ type: "update-ready" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restart to update" }));
+
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(window.fluxmail.system.installUpdate).toHaveBeenCalledOnce();
   });
 
   it("waits for an inline draft before confirming a window close", async () => {
@@ -1374,6 +1428,8 @@ function installApi(
       system: {
         confirmWindowClose: vi.fn(async () => undefined),
         cancelWindowClose: vi.fn(async () => undefined),
+        updateReady: vi.fn(async () => false),
+        installUpdate: vi.fn(async () => undefined),
       },
       onEvent: vi.fn((callback: (event: AppEvent) => void) => {
         eventListener = callback;

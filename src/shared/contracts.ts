@@ -530,6 +530,7 @@ export const appEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("cache-changed") }),
   z.object({ type: z.literal("accounts-changed") }),
   z.object({ type: z.literal("license-changed") }),
+  z.object({ type: z.literal("update-ready") }),
   z.object({ type: z.literal("new-mail"), count: z.number().int().positive() }),
   z.object({ type: z.literal("window-close-requested") }),
   z.object({ type: z.literal("find-in-conversation-requested") }),
@@ -627,6 +628,8 @@ export interface FluxmailDesktopApi {
   system: {
     openExternal(url: string): Promise<void>;
     openLegalNotices(): Promise<void>;
+    updateReady(): Promise<boolean>;
+    installUpdate(): Promise<void>;
     cancelWindowClose(): Promise<void>;
     confirmWindowClose(): Promise<void>;
     restart(): Promise<void>;
@@ -677,6 +680,8 @@ export const IPC = {
   analyticsFeature: "fluxmail:analytics:feature",
   systemOpenExternal: "fluxmail:system:open-external",
   systemOpenLegalNotices: "fluxmail:system:open-legal-notices",
+  systemUpdateReady: "fluxmail:system:update-ready",
+  systemInstallUpdate: "fluxmail:system:install-update",
   systemWindowCloseCancel: "fluxmail:system:window-close-cancel",
   systemWindowCloseConfirm: "fluxmail:system:window-close-confirm",
   systemRestart: "fluxmail:system:restart",
