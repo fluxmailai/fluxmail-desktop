@@ -7,9 +7,6 @@
   labels: ["dependencies"],
   semanticCommits: "enabled",
   postUpdateOptions: ["pnpmDedupe"],
-  major: {
-    dependencyDashboardApproval: true,
-  },
   packageRules: [
     {
       matchManagers: ["npm"],
