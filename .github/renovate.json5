@@ -36,8 +36,6 @@
       minimumReleaseAge: null,
     },
     {
-      // CI doesn't run the Electron suite or package the app, so run
-      // pnpm test:e2e locally before merging these.
       matchPackageNames: ["electron", "@electron/**", "@electron-forge/**"],
       groupName: "Electron",
       groupSlug: "electron",
