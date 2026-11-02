@@ -24,16 +24,17 @@ test("asks for an update when the shared store is newer than this version", asyn
       FLUXMAIL_TELEMETRY: "0",
     },
   });
+  const electronProcess = electronApp.process();
 
   try {
     const page = await electronApp.firstWindow();
     await expect(page.getByRole("heading", { name: "Update Fluxmail to continue" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
-    const exited = new Promise((resolve) => electronApp.process().once("exit", resolve));
+    const exited = new Promise((resolve) => electronProcess.once("exit", resolve));
     await electronApp.evaluate(({ app }) => app.quit());
     await exited;
   } finally {
-    electronApp.process().kill();
+    electronProcess.kill();
     rmSync(dataDirectory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });
