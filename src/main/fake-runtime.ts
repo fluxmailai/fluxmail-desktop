@@ -167,6 +167,9 @@ export class FakeFluxmailRuntime {
   ) {}
 
   async initialize(): Promise<void> {}
+  isViewSyncing(): boolean {
+    return false;
+  }
   license(): BootstrapState["license"] {
     return this.licenseValue;
   }

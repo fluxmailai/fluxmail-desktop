@@ -119,6 +119,7 @@ let imageRelayAccess: HostedImageRelayAccess | null = null;
 let pollTimer: NodeJS.Timeout | undefined;
 let syncState: SyncState = { status: "idle" };
 let activeMailboxInput: ThreadListInput = { view: "inbox", pageSize: 100 };
+let activeViewSyncing = false;
 let rendererReady = false;
 let windowCloseConfirmed = false;
 let windowClosePending = false;
@@ -259,6 +260,7 @@ async function createServices(): Promise<void> {
           resolveAttachment,
           onNewMessages: showNewMail,
           onCacheChanged,
+          onViewSyncChanged: sendViewSyncStatus,
           onLicenseChanged,
         });
   await runtime.initialize();
@@ -489,7 +491,7 @@ function registerIpc(): void {
     requireRuntime().sendAs(accountId),
   );
   handle(IPC.mailList, threadListInputSchema, threadPageSchema, async (input) => {
-    activeMailboxInput = mailboxRefreshInput(input);
+    setActiveMailbox(input);
     const started = performance.now();
     const cacheHit = cache?.hasAnyThreads() ?? false;
     const page = await requireRuntime().listThreads(input);
@@ -505,7 +507,7 @@ function registerIpc(): void {
     return page;
   });
   handle(IPC.mailSearch, threadListInputSchema, threadPageSchema, async (input) => {
-    activeMailboxInput = mailboxRefreshInput(input);
+    setActiveMailbox(input);
     return requireRuntime().listThreads(input, true);
   });
   handle(IPC.mailThread, threadTargetSchema, threadSchema, async (target) => {
@@ -746,6 +748,19 @@ function schedulePolling(): void {
 function setSyncState(state: SyncState): void {
   syncState = state;
   sendEvent({ type: "sync-status", state });
+}
+
+function setActiveMailbox(input: ThreadListInput): void {
+  activeMailboxInput = mailboxRefreshInput(input);
+  sendViewSyncStatus();
+}
+
+/** Tells the renderer whether the open mailbox is syncing outside the app-wide refresh. */
+function sendViewSyncStatus(): void {
+  const syncing = runtime?.isViewSyncing(activeMailboxInput) ?? false;
+  if (syncing === activeViewSyncing) return;
+  activeViewSyncing = syncing;
+  sendEvent({ type: "view-sync-status", syncing });
 }
 
 function sendEvent(event: AppEvent): void {

@@ -59,6 +59,7 @@ interface RuntimeOptions {
   resolveAttachment(attachment: ComposeAttachment): Promise<AttachmentInput>;
   onNewMessages(messages: Message[], account: AccountInfo): void;
   onCacheChanged(): void;
+  onViewSyncChanged(): void;
   onLicenseChanged(): void;
 }
 
@@ -101,6 +102,8 @@ export class FluxmailRuntime {
   private imageRelayLicenseRefresh?: Promise<void>;
   private imageRelayAccessDeniedByServer = false;
   private readonly backgroundViewRefreshes = new Map<string, Promise<void>>();
+  /** Counts provider syncs that list requests started, keyed like background refreshes. */
+  private readonly viewSyncs = new Map<string, number>();
   private readonly committedViewRefreshes = new Map<string, number>();
   private readonly scheduledCacheTimers = new Map<string, ScheduledCacheTimer>();
   private readonly undoScheduleIds = new Set<string>();
@@ -625,7 +628,9 @@ export class FluxmailRuntime {
         const missingScheduledDraft = all.length < visibleScheduleCount;
         if (forceProviderSearch || input.refresh || (needsInitialPage && missingScheduledDraft)) {
           try {
-            await this.syncCompleteView(draftInput, forceProviderSearch ? "manual" : "startup");
+            await this.trackViewSync(draftInput, () =>
+              this.syncCompleteView(draftInput, forceProviderSearch ? "manual" : "startup"),
+            );
             all = this.options.cache.listScheduledThreads(this.activeScheduled(), input.accountIds);
           } catch (error) {
             if (!all.length) throw error;
@@ -675,7 +680,9 @@ export class FluxmailRuntime {
       );
       if (forceProviderSearch || input.refresh || needsInitialPage) {
         try {
-          await this.syncView(input, forceProviderSearch ? "manual" : "startup", "refresh");
+          await this.trackViewSync(input, () =>
+            this.syncView(input, forceProviderSearch ? "manual" : "startup", "refresh"),
+          );
         } catch (error) {
           if (!cacheHit) throw error;
         }
@@ -1735,9 +1742,33 @@ export class FluxmailRuntime {
     );
   }
 
+  /** Whether a list request is still syncing this mailbox view with the provider. */
+  isViewSyncing(input: ThreadListInput): boolean {
+    const syncedInput: ThreadListInput =
+      input.view === "scheduled" ? { view: "drafts", accountIds: input.accountIds } : input;
+    return this.viewSyncs.has(backgroundRefreshKey(syncedInput));
+  }
+
+  private async trackViewSync<T>(input: ThreadListInput, sync: () => Promise<T>): Promise<T> {
+    const key = backgroundRefreshKey(input);
+    const active = this.viewSyncs.get(key) ?? 0;
+    this.viewSyncs.set(key, active + 1);
+    if (!active) this.options.onViewSyncChanged();
+    try {
+      return await sync();
+    } finally {
+      const remaining = (this.viewSyncs.get(key) ?? 1) - 1;
+      if (remaining) this.viewSyncs.set(key, remaining);
+      else {
+        this.viewSyncs.delete(key);
+        this.options.onViewSyncChanged();
+      }
+    }
+  }
+
   private refreshViewInBackground(input: ThreadListInput, refreshKey: string): void {
     if (this.backgroundViewRefreshes.has(refreshKey)) return;
-    const refresh = this.syncView(input, "startup", "refresh")
+    const refresh = this.trackViewSync(input, () => this.syncView(input, "startup", "refresh"))
       .then(() => undefined)
       .catch(() => undefined)
       .finally(() => {
@@ -1749,7 +1780,7 @@ export class FluxmailRuntime {
 
   private refreshCompleteViewInBackground(input: ThreadListInput, refreshKey: string): void {
     if (this.backgroundViewRefreshes.has(refreshKey)) return;
-    const refresh = this.syncCompleteView(input, "startup")
+    const refresh = this.trackViewSync(input, () => this.syncCompleteView(input, "startup"))
       .then(() => undefined)
       .catch(() => undefined)
       .finally(() => {
