@@ -59,6 +59,7 @@ export function App() {
   const [selection, setSelection] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [viewSyncing, setViewSyncing] = useState(false);
   const [searchText, setSearchText] = useState("");
   const deferredSearch = useDeferredValue(searchText);
   const [submittedSearch, setSubmittedSearch] = useState("");
@@ -441,6 +442,7 @@ export function App() {
     const unsubscribe = window.fluxmail.onEvent((event: AppEvent) => {
       if (event.type === "sync-status")
         setBootstrap((current) => (current ? { ...current, sync: event.state } : current));
+      if (event.type === "view-sync-status") setViewSyncing(event.syncing);
       if (event.type === "accounts-changed" || event.type === "license-changed")
         void loadBootstrap();
       if (event.type === "update-ready") setUpdateReady(true);
@@ -1031,6 +1033,7 @@ export function App() {
         deferredSearch={deferredSearch}
         searchRef={searchRef}
         sync={bootstrap.sync}
+        viewSyncing={viewSyncing}
         labels={availableLabels}
         accounts={availableSearchAccounts}
         permanentDeleteAccountIds={permanentDeleteAccountIds}

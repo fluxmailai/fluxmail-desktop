@@ -43,6 +43,8 @@ interface Props {
   selection: Set<string>;
   loading: boolean;
   loadingMore: boolean;
+  /** The open mailbox is syncing on its own, such as after switching folders. */
+  viewSyncing: boolean;
   hasMore: boolean;
   searchText: string;
   deferredSearch: string;
@@ -218,7 +220,10 @@ export function ThreadListPane(props: Props) {
                 shortcut={KEYBOARD_SHORTCUTS.refresh}
                 onClick={props.onRefresh}
               >
-                <RefreshCw className={props.sync.status === "syncing" ? "spin" : ""} size={16} />
+                <RefreshCw
+                  className={props.sync.status === "syncing" || props.viewSyncing ? "spin" : ""}
+                  size={16}
+                />
               </IconButton>
             </>
           )}

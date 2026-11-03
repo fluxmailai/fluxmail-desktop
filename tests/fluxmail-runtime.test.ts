@@ -562,13 +562,16 @@ describe("FluxmailRuntime thread loading", () => {
       .mockResolvedValueOnce({ items: [cachedSent] })
       .mockReturnValueOnce(pendingRefresh);
     const onCacheChanged = vi.fn();
+    const onViewSyncChanged = vi.fn();
     const runtime = createRuntimeWithCache({
       cache: createCache(),
       service: { listMessages },
       onCacheChanged,
+      onViewSyncChanged,
     });
 
     await runtime.listThreads({ view: "sent", pageSize: 100 });
+    onViewSyncChanged.mockClear();
     const backgroundResult = await runtime.listThreads({
       view: "sent",
       pageSize: 100,
@@ -577,9 +580,14 @@ describe("FluxmailRuntime thread loading", () => {
 
     expect(backgroundResult.items.map((item) => item.id)).toEqual(["cached-sent-thread"]);
     expect(listMessages).toHaveBeenCalledTimes(2);
+    expect(runtime.isViewSyncing({ view: "sent" })).toBe(true);
+    expect(runtime.isViewSyncing({ view: "inbox" })).toBe(false);
+    expect(onViewSyncChanged).toHaveBeenCalledOnce();
 
     finishRefresh({ items: [freshSent] });
     await vi.waitFor(() => expect(onCacheChanged).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(runtime.isViewSyncing({ view: "sent" })).toBe(false));
+    expect(onViewSyncChanged).toHaveBeenCalledTimes(2);
     const refreshedResult = await runtime.listThreads({ view: "sent", pageSize: 100 });
     expect(refreshedResult.items.map((item) => item.id)).toEqual(["fresh-sent-thread"]);
   });
@@ -3534,6 +3542,7 @@ function createRuntime(input: {
   service: Record<string, ReturnType<typeof vi.fn>>;
   cache: Record<string, ReturnType<typeof vi.fn>>;
   onCacheChanged(): void;
+  onViewSyncChanged?(): void;
   onLicenseChanged?(): void;
 }): FluxmailRuntime {
   const cache = {
@@ -3556,6 +3565,7 @@ function createRuntime(input: {
     })),
     onNewMessages: vi.fn(),
     onCacheChanged: input.onCacheChanged,
+    onViewSyncChanged: input.onViewSyncChanged ?? vi.fn(),
     onLicenseChanged: input.onLicenseChanged ?? vi.fn(),
   });
   Object.assign(runtime, {
@@ -3588,6 +3598,7 @@ function createRuntimeWithCache(input: {
   service: Record<string, ReturnType<typeof vi.fn>>;
   accounts?: AccountInfo[];
   onCacheChanged(): void;
+  onViewSyncChanged?(): void;
   onNewMessages?(messages: Message[], account: AccountInfo): void;
   onLicenseChanged?(): void;
 }): FluxmailRuntime {
@@ -3606,6 +3617,7 @@ function createRuntimeWithCache(input: {
     })),
     onNewMessages: input.onNewMessages ?? vi.fn(),
     onCacheChanged: input.onCacheChanged,
+    onViewSyncChanged: input.onViewSyncChanged ?? vi.fn(),
     onLicenseChanged: input.onLicenseChanged ?? vi.fn(),
   });
   Object.assign(runtime, {

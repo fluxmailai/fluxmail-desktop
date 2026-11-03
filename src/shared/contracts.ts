@@ -529,6 +529,7 @@ export type FeatureEvent = z.infer<typeof featureEventSchema>;
 
 export const appEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("sync-status"), state: syncStateSchema }),
+  z.object({ type: z.literal("view-sync-status"), syncing: z.boolean() }),
   z.object({ type: z.literal("cache-changed") }),
   z.object({ type: z.literal("accounts-changed") }),
   z.object({ type: z.literal("license-changed") }),
