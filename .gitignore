@@ -12,3 +12,4 @@ test-results/
 src/main/generated-release-config.ts
 THIRD_PARTY_NOTICES.md
 licenses/
+.context/
