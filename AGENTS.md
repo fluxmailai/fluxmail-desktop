@@ -8,6 +8,8 @@ Run `pnpm test:e2e` locally before finishing changes that affect user flows, Ele
 
 Other sessions may be using the main checkout, so don't switch its branch, stash its changes or edit its files. Do each task in its own worktree: start Claude with `claude --worktree <name>`, or call `EnterWorktree` before you change anything. The hooks in `.claude/settings.json` install dependencies in a new worktree and set `FLUXMAIL_DESKTOP_TEST_DATA_DIR` and `FLUXMAIL_DATA_DIR` for every Bash command in it. `pnpm dev` then uses the worktree's own app profile and data instead of `~/.fluxmail`, and another session's app doesn't hold its single-instance lock. To set up a worktree you created with `git worktree add`, run `bash scripts/worktree-setup.sh` in it.
 
+Rex tabs and panes start from your login shell, so a development app you start in one doesn't get these variables. Load them in the command, for example `rex window new -s "$REX_SESSION" App -c "$PWD" --keep-open --focus=false -- sh -c 'eval "$(bash scripts/worktree-setup.sh --env "$PWD")" && exec pnpm dev'`.
+
 # Verifying changes
 
 Before reporting a change as finished, run the app and confirm it works. Passing tests and type checks don't show that a screen renders, a flow completes, or a fix solves the reported problem.
