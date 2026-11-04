@@ -4,6 +4,10 @@ GitHub CI runs formatting, lint, type checks, unit tests, and the Electron end-t
 
 Run `pnpm test:e2e` locally before finishing changes that affect user flows, Electron integration, or app packaging.
 
+# Parallel sessions
+
+Other sessions may be using the main checkout, so don't switch its branch, stash its changes or edit its files. Do each task in its own worktree: start Claude with `claude --worktree <name>`, or call `EnterWorktree` before you change anything. The hooks in `.claude/settings.json` install dependencies in a new worktree and set `FLUXMAIL_DESKTOP_TEST_DATA_DIR` and `FLUXMAIL_DATA_DIR` for every Bash command in it. `pnpm dev` then uses the worktree's own app profile and data instead of `~/.fluxmail`, and another session's app doesn't hold its single-instance lock. To set up a worktree you created with `git worktree add`, run `bash scripts/worktree-setup.sh` in it.
+
 # Verifying changes
 
 Before reporting a change as finished, run the app and confirm it works. Passing tests and type checks don't show that a screen renders, a flow completes, or a fix solves the reported problem.
