@@ -1045,6 +1045,34 @@ describe("FluxmailRuntime conversation mutations", () => {
     expect(runtime.unreadCount()).toBe(2);
   });
 
+  it("restores the inbox unread count when a read change fails offline", async () => {
+    const cache = createCache();
+    const message = inboxMessage({ id: "message-1", threadId: "thread-1", body: { text: "one" } });
+    cache.putThread(account, { id: "thread-1", subject: message.subject, messages: [message] });
+    cache.putFolders(account.id, [{ id: "INBOX", name: "Inbox", role: "inbox", unreadCount: 1 }]);
+    const offline = () => Promise.reject(new Error("offline"));
+    const runtime = createRuntimeWithCache({
+      cache,
+      service: {
+        getThread: vi.fn(offline),
+        listFolders: vi.fn(offline),
+        modify: vi.fn(offline),
+      },
+      onCacheChanged: vi.fn(),
+    });
+
+    await expect(
+      runtime.modify(
+        [{ accountId: account.id, threadId: "thread-1" }],
+        { type: "markRead" },
+        false,
+      ),
+    ).rejects.toThrow("offline");
+
+    expect(cache.snapshotThread(account.id, "thread-1")).toMatchObject({ unread: 1 });
+    expect(runtime.unreadCount()).toBe(1);
+  });
+
   it("refetches a thread when the provider did not confirm every flag change", async () => {
     const cache = createCache();
     const first = inboxMessage({ id: "message-1", threadId: "thread-1" });
