@@ -785,6 +785,25 @@ export class FluxmailRuntime {
     return request;
   }
 
+  /**
+   * Runs a cache write and moves each account's provider-reported inbox unread count by the
+   * change in cached unread inbox threads. The provider's count lags until a change lands and
+   * folders refresh, so this keeps the unread badge in step with the list, including when a
+   * failed change is rolled back and the folder refresh fails too.
+   */
+  private trackInboxUnread<T>(accountIds: string[], write: () => T): T {
+    const before = new Map(
+      accountIds.map((accountId) => [accountId, this.options.cache.unreadCount([accountId])]),
+    );
+    const result = write();
+    for (const [accountId, count] of before)
+      this.options.cache.adjustInboxUnreadCount(
+        accountId,
+        this.options.cache.unreadCount([accountId]) - count,
+      );
+    return result;
+  }
+
   private threadVersion(accountId: string, threadId: string): string {
     return `${this.cacheGeneration}:${this.options.cache.threadRevision(accountId, threadId)}`;
   }
@@ -818,13 +837,18 @@ export class FluxmailRuntime {
         row: this.options.cache.snapshotThread(target.accountId, target.threadId),
       }));
       this.options.cache.claimMutation(currentMutationId, targets);
-      for (const target of targets)
-        this.options.cache.applyActionIfOwned(
-          target.accountId,
-          target.threadId,
-          action,
-          currentMutationId,
-        );
+      this.trackInboxUnread(
+        targets.map((target) => target.accountId),
+        () => {
+          for (const target of targets)
+            this.options.cache.applyActionIfOwned(
+              target.accountId,
+              target.threadId,
+              action,
+              currentMutationId,
+            );
+        },
+      );
       this.options.onCacheChanged();
       const flags = messageFlagsForAction(action);
       return await this.measure("modify", async () => {
@@ -897,21 +921,25 @@ export class FluxmailRuntime {
                   snapshot.target.accountId,
                   snapshot.target.threadId,
                 );
-                this.options.cache.putThreadIfOwned(
-                  this.requireAccount(snapshot.target.accountId),
-                  thread,
-                  currentMutationId,
+                this.trackInboxUnread([snapshot.target.accountId], () =>
+                  this.options.cache.putThreadIfOwned(
+                    this.requireAccount(snapshot.target.accountId),
+                    thread,
+                    currentMutationId,
+                  ),
                 );
               } catch (error) {
-                if (isEmailError(error) && error.code === "not_found") {
-                  this.options.cache.finalizeDeleteIfOwned(
-                    snapshot.target.accountId,
-                    snapshot.target.threadId,
-                    currentMutationId,
-                  );
-                } else if (snapshot.row) {
-                  this.options.cache.restoreThreadIfOwned(snapshot.row, currentMutationId);
-                }
+                this.trackInboxUnread([snapshot.target.accountId], () => {
+                  if (isEmailError(error) && error.code === "not_found") {
+                    this.options.cache.finalizeDeleteIfOwned(
+                      snapshot.target.accountId,
+                      snapshot.target.threadId,
+                      currentMutationId,
+                    );
+                  } else if (snapshot.row) {
+                    this.options.cache.restoreThreadIfOwned(snapshot.row, currentMutationId);
+                  }
+                });
               }
             }),
         );
