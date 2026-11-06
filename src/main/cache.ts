@@ -249,6 +249,23 @@ export class MailCache {
     })();
   }
 
+  /** Shifts a provider-reported inbox unread count until the next folder refresh replaces it. */
+  adjustInboxUnreadCount(accountId: string, delta: number): void {
+    if (!delta) return;
+    const rows = this.db
+      .prepare("SELECT folder_id, payload_json FROM folders WHERE account_id = ?")
+      .all(accountId) as Array<{ folder_id: string; payload_json: string }>;
+    const update = this.db.prepare(
+      "UPDATE folders SET payload_json = ? WHERE account_id = ? AND folder_id = ?",
+    );
+    for (const row of rows) {
+      const folder = JSON.parse(row.payload_json) as Folder;
+      if (folder.role !== "inbox" || folder.unreadCount === undefined) continue;
+      folder.unreadCount = Math.max(0, folder.unreadCount + delta);
+      update.run(JSON.stringify(folder), accountId, row.folder_id);
+    }
+  }
+
   recordResultPage(accountId: string, viewKey: string, threadIds: string[], reset: boolean): void {
     const insert = this.db.prepare(
       "INSERT OR IGNORE INTO view_results(account_id, view_key, thread_id) VALUES (?, ?, ?)",

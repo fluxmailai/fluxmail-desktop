@@ -818,12 +818,22 @@ export class FluxmailRuntime {
         row: this.options.cache.snapshotThread(target.accountId, target.threadId),
       }));
       this.options.cache.claimMutation(currentMutationId, targets);
+      const unreadBefore = new Map(
+        targets.map(({ accountId }) => [accountId, this.options.cache.unreadCount([accountId])]),
+      );
       for (const target of targets)
         this.options.cache.applyActionIfOwned(
           target.accountId,
           target.threadId,
           action,
           currentMutationId,
+        );
+      // The provider's inbox count lags until the change lands and folders refresh, so move it
+      // with the cached threads to keep the unread badge in step with the list.
+      for (const [accountId, before] of unreadBefore)
+        this.options.cache.adjustInboxUnreadCount(
+          accountId,
+          this.options.cache.unreadCount([accountId]) - before,
         );
       this.options.onCacheChanged();
       const flags = messageFlagsForAction(action);

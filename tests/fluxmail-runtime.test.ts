@@ -1011,6 +1011,40 @@ describe("FluxmailRuntime conversation mutations", () => {
     expect(cache.getThread(account.id, "thread-1")?.messages[1]?.body?.text).toBe("two");
   });
 
+  it("lowers the provider's inbox unread count while a read change is in flight", async () => {
+    const cache = createCache();
+    const message = inboxMessage({ id: "message-1", threadId: "thread-1", body: { text: "one" } });
+    cache.putThread(account, { id: "thread-1", subject: message.subject, messages: [message] });
+    cache.putFolders(account.id, [{ id: "INBOX", name: "Inbox", role: "inbox", unreadCount: 3 }]);
+    let finishModify!: () => void;
+    const modify = vi.fn(
+      (_accountId: string, ids: string[]) =>
+        new Promise<{ succeededIds: string[] }>((resolve) => {
+          finishModify = () => resolve({ succeededIds: ids });
+        }),
+    );
+    const listFolders = vi.fn(async () => [
+      { id: "INBOX", name: "Inbox", role: "inbox" as const, unreadCount: 2 },
+    ]);
+    const runtime = createRuntimeWithCache({
+      cache,
+      service: { getThread: vi.fn(), listFolders, modify },
+      onCacheChanged: vi.fn(),
+    });
+
+    const pending = runtime.modify(
+      [{ accountId: account.id, threadId: "thread-1" }],
+      { type: "markRead" },
+      false,
+    );
+
+    expect(runtime.unreadCount()).toBe(2);
+    await vi.waitFor(() => expect(modify).toHaveBeenCalled());
+    finishModify();
+    await pending;
+    expect(runtime.unreadCount()).toBe(2);
+  });
+
   it("refetches a thread when the provider did not confirm every flag change", async () => {
     const cache = createCache();
     const first = inboxMessage({ id: "message-1", threadId: "thread-1" });
