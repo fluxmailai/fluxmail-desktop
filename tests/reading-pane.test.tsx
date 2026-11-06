@@ -303,6 +303,71 @@ describe("ReadingPane", () => {
     expect(screen.getByText("Reply to everyone")).toBeTruthy();
   });
 
+  it("opens a composer asked for before the conversation loads", async () => {
+    const thread = detail("Group message", "message-1");
+    thread.messages[0]!.to.push({ email: "teammate@example.com" });
+    let resolveThread!: (value: MailThread) => void;
+    const getThread = vi.fn(() => new Promise<MailThread>((resolve) => (resolveThread = resolve)));
+    Object.defineProperty(window, "fluxmail", {
+      configurable: true,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread },
+      } as unknown as FluxmailDesktopApi,
+    });
+    const ref = createRef<ReadingPaneHandle>();
+    renderPane(summary(), { ref });
+
+    act(() => ref.current!.openComposer("replyAll"));
+    await act(async () => resolveThread(thread));
+
+    expect(await screen.findByText("Reply to everyone")).toBeTruthy();
+  });
+
+  it("turns a Reply all for a named conversation into Reply when no one else is included", async () => {
+    const getThread = vi.fn(async () => detail("Direct message", "message-1"));
+    Object.defineProperty(window, "fluxmail", {
+      configurable: true,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread },
+      } as unknown as FluxmailDesktopApi,
+    });
+    const ref = createRef<ReadingPaneHandle>();
+    renderPane(summary(), { ref });
+    await screen.findByText("Direct message");
+
+    act(() => ref.current!.openComposer("replyAll"));
+    expect(screen.queryByText("Write a reply")).toBeNull();
+
+    act(() => ref.current!.openComposer("replyAll", { accountId: "account-1", id: "thread-1" }));
+    expect(await screen.findByText("Write a reply")).toBeTruthy();
+    expect(screen.queryByText("Reply to everyone")).toBeNull();
+  });
+
+  it("forgets a waiting composer when the conversation fails to load", async () => {
+    const getThread = vi
+      .fn<() => Promise<MailThread>>()
+      .mockRejectedValueOnce(new Error("Offline"))
+      .mockResolvedValue(detail("Direct message", "message-1"));
+    Object.defineProperty(window, "fluxmail", {
+      configurable: true,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread },
+      } as unknown as FluxmailDesktopApi,
+    });
+    const ref = createRef<ReadingPaneHandle>();
+    const { rerender } = renderPane(summary(), { ref });
+    act(() => ref.current!.openComposer("reply", { accountId: "account-1", id: "thread-1" }));
+    await waitFor(() => expect(paneCallbacks.onError).toHaveBeenCalledWith("Offline"));
+
+    rerender(paneElement(summary({ date: "2026-07-16T13:00:00Z" }), { ref }));
+
+    await screen.findByText("Direct message");
+    expect(screen.queryByText("Write a reply")).toBeNull();
+  });
+
   it("scrolls to the inline composer and offers scheduled send", async () => {
     const thread = detail("Reply subject", "message-1");
     thread.messages[0]!.to.push({ email: "teammate@example.com" });
@@ -1247,6 +1312,7 @@ interface PaneOptions {
   allowPermanentDelete?: boolean;
   strict?: boolean;
   onDraftFinished?: () => void;
+  ref?: React.Ref<ReadingPaneHandle>;
 }
 
 const paneCallbacks = { onError: vi.fn(), onQuickReplyDirtyChange: vi.fn() };
@@ -1259,6 +1325,7 @@ function renderPane(thread: ThreadSummary, options: PaneOptions = {}) {
 function paneElement(thread: ThreadSummary, options: PaneOptions = {}) {
   return (
     <ReadingPane
+      ref={options.ref}
       view={options.view ?? "inbox"}
       thread={thread}
       labels={[]}

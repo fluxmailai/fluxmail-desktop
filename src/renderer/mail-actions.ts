@@ -6,6 +6,15 @@ export function mailboxMoveAction(view: MailboxView): ModifyActionInput {
   return { type: "archive" };
 }
 
+/** Scheduled mail can only be canceled, so it has no Archive or Restore. */
+export function mailboxCanMove(view: MailboxView): boolean {
+  return view !== "scheduled";
+}
+
+export function mailboxCanMarkSpam(view: MailboxView): boolean {
+  return view !== "scheduled" && view !== "spam";
+}
+
 export function mailboxDeleteAction(
   view: MailboxView,
   allowPermanentDelete = false,

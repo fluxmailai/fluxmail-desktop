@@ -752,8 +752,13 @@ export function App() {
           latestUndo.current = { token: result.undoToken, targetKeys };
           showActionNotice(actionSuccessMessage(action, targets.length));
         }
+        // Deselect only what the action touched, so a row acted on from its menu keeps the rest.
         if (!optimisticRemoval && mailboxContext === mailboxContextRef.current)
-          setSelection(new Set());
+          setSelection((current) => {
+            const next = new Set(current);
+            for (const key of targetKeys) next.delete(key);
+            return next;
+          });
         setSelectedThread((current) => {
           if (!current || !targetKeys.has(threadKey(current))) return current;
           if (action.type === "markRead" || action.type === "markUnread")
@@ -830,6 +835,16 @@ export function App() {
       activateThread(thread);
     },
     [activateThread, prepareReadingNavigation, selectedThread, showError],
+  );
+
+  const replyFromList = useCallback(
+    async (thread: ThreadSummary, mode: InlineComposerMode) => {
+      await openThread(thread);
+      // Opening can be canceled, such as to keep an unsent reply in another conversation.
+      if (selectedThreadRef.current && threadKey(selectedThreadRef.current) === threadKey(thread))
+        readingPaneRef.current?.openComposer(mode, thread);
+    },
+    [openThread],
   );
 
   const handleDraftMissing = useCallback((missingThread: ThreadSummary) => {
@@ -1064,6 +1079,7 @@ export function App() {
           })
         }
         onModify={modify}
+        onReply={(thread, mode) => void replyFromList(thread, mode)}
         onLoadMore={() => void loadThreads({ append: true })}
         onRefresh={() => void refreshMail()}
         onExpandSidebar={() => setSidebarCollapsed(false)}

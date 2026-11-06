@@ -94,7 +94,12 @@ interface Props {
 export type InlineComposerMode = "reply" | "replyAll" | "forward";
 
 export interface ReadingPaneHandle {
-  openComposer(mode: InlineComposerMode): void;
+  /**
+   * Opens the inline composer, or opens it once the conversation loads. A target names the
+   * conversation it is for, such as one just opened from the list, and turns a Reply all with
+   * no one else to include into a Reply.
+   */
+  openComposer(mode: InlineComposerMode, target?: Pick<ThreadSummary, "accountId" | "id">): void;
   openFind(): void;
   closeDraft(): boolean | Promise<boolean>;
 }
@@ -141,6 +146,11 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
   const [findMatchCounts, setFindMatchCounts] = useState<Record<string, number>>({});
   const [activeFindMatch, setActiveFindMatch] = useState(0);
   const forwardRequest = useRef(0);
+  const pendingComposer = useRef<
+    { identity: string; mode: InlineComposerMode; targeted: boolean } | undefined
+  >(undefined);
+  // The conversation `detail` belongs to, since it is cleared only after the thread changes.
+  const detailKey = useRef<string | undefined>(undefined);
   const composerRef = useRef<InlineComposerState | undefined>(undefined);
   const draftDialogRef = useRef<ComposeDialogHandle>(null);
   const draftSeedRef = useRef<ComposeSeed | undefined>(undefined);
@@ -222,13 +232,25 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
   );
 
   const openComposer = useCallback(
-    async (mode: InlineComposerMode) => {
+    async (mode: InlineComposerMode, target?: Pick<ThreadSummary, "accountId" | "id">) => {
+      const identity = target ? `${target.accountId}:${target.id}` : threadIdentityRef.current;
+      if (
+        !thread ||
+        !detail ||
+        identity !== `${thread.accountId}:${thread.id}` ||
+        detailKey.current !== identity
+      ) {
+        if (identity) pendingComposer.current = { identity, mode, targeted: Boolean(target) };
+        return;
+      }
+      pendingComposer.current = undefined;
       if (draftSeed) return;
-      const message = [...(detail?.messages ?? [])]
-        .reverse()
-        .find((candidate) => !candidate.flags.draft);
-      if (!thread || !message) return;
-      if (mode === "replyAll" && !shouldOfferReplyAll(thread.accountEmail, message)) return;
+      const message = [...detail.messages].reverse().find((candidate) => !candidate.flags.draft);
+      if (!message) return;
+      if (mode === "replyAll" && !shouldOfferReplyAll(thread.accountEmail, message)) {
+        if (!target) return;
+        mode = "reply";
+      }
       if (!canReplaceComposer(mode)) return;
       if (mode !== "forward") {
         forwardRequest.current += 1;
@@ -236,7 +258,6 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
         return;
       }
       const request = ++forwardRequest.current;
-      const identity = `${thread.accountId}:${thread.id}`;
       try {
         const initialAttachments = message.attachments?.length
           ? await window.fluxmail.attachments.prepare({
@@ -263,10 +284,17 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
     [canReplaceComposer, detail, draftSeed, onError, thread],
   );
 
+  // Runs a composer asked for before the conversation finished loading.
+  useEffect(() => {
+    const pending = pendingComposer.current;
+    if (!pending || !thread || !detail || detailKey.current !== pending.identity) return;
+    void openComposer(pending.mode, pending.targeted ? thread : undefined);
+  }, [detail, openComposer, thread]);
+
   useImperativeHandle(
     ref,
     () => ({
-      openComposer: (mode) => void openComposer(mode),
+      openComposer: (mode, target) => void openComposer(mode, target),
       openFind,
       closeDraft: () => draftDialogRef.current?.close() ?? true,
     }),
@@ -279,8 +307,11 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
       : undefined;
     if (nextThreadKey && nextThreadKey === loadedThreadKey.current && draftSeedRef.current) return;
     loadedThreadKey.current = nextThreadKey;
+    if (pendingComposer.current?.identity !== (thread ? `${thread.accountId}:${thread.id}` : ""))
+      pendingComposer.current = undefined;
     closeFind();
     setDetail(undefined);
+    detailKey.current = undefined;
     setDraftSeed(undefined);
     composerDirty.current = false;
     setComposer(undefined);
@@ -295,7 +326,10 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
       !thread.draft &&
       !thread.pendingSend &&
       !opened.detail.messages.some((message) => message.flags.draft);
-    if (showOpened) setDetail(opened.detail);
+    if (showOpened) {
+      setDetail(opened.detail);
+      detailKey.current = cacheKey;
+    }
     setLoading(!showOpened);
     void window.fluxmail.mail
       .getThread({ accountId: thread.accountId, threadId: thread.id })
@@ -308,6 +342,7 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
         // Keep the painted conversation when nothing changed, so its message frames stay loaded.
         if (!showOpened || JSON.stringify(opened.detail) !== JSON.stringify(result))
           setDetail(result);
+        detailKey.current = cacheKey;
         const draft = [...result.messages]
           .reverse()
           .find(
@@ -360,11 +395,13 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
           initialAttachments,
         });
       })
-      .catch((error) =>
+      .catch((error) => {
+        if (!canceled && pendingComposer.current?.identity === cacheKey)
+          pendingComposer.current = undefined;
         onError(
           error instanceof Error ? error.message : "Fluxmail could not open this conversation.",
-        ),
-      )
+        );
+      })
       .finally(() => {
         if (!canceled) setLoading(false);
       });
