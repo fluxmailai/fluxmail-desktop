@@ -68,3 +68,72 @@ test("copies a link from the email context menu", async () => {
     rmSync(dataDirectory, { recursive: true, force: true });
   }
 });
+
+test("acts on conversations from the thread list context menu", async () => {
+  const dataDirectory = mkdtempSync(path.join(tmpdir(), "fluxmail-thread-menu-e2e-"));
+  const electronApp = await electron.launch({
+    args: ["--use-mock-keychain", process.cwd()],
+    env: {
+      ...process.env,
+      FLUXMAIL_DESKTOP_FAKE_MAIL: "1",
+      FLUXMAIL_DESKTOP_E2E_HEADLESS: "1",
+      FLUXMAIL_DESKTOP_TEST_DATA_DIR: dataDirectory,
+      FLUXMAIL_DATA_DIR: path.join(dataDirectory, ".fluxmail"),
+      FLUXMAIL_TELEMETRY: "0",
+    },
+  });
+
+  try {
+    const page = await electronApp.firstWindow();
+    await expect(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
+    await electronApp.evaluate(({ Menu }) => {
+      const state = globalThis as typeof globalThis & { nativeMenuShown?: boolean };
+      Menu.prototype.popup = function popup() {
+        state.nativeMenuShown = true;
+      };
+    });
+    const rows = page.locator(".thread-row");
+    const first = rows.nth(0);
+    const second = rows.nth(1);
+    const firstSubject = await first.locator(".subject-line").innerText();
+    const secondSubject = await second.locator(".subject-line").innerText();
+    const menu = page.getByRole("menu", { name: "Conversation actions" });
+
+    await first.locator(".thread-open").click({ button: "right" });
+    await expect(menu).toBeVisible();
+    await expect(first).toHaveClass(/context-open/);
+    await expect(page.locator(".reading-placeholder")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+
+    await first.locator(".thread-open").click({ button: "right" });
+    await menu.getByRole("menuitem", { name: /^Star/ }).click();
+    await expect(menu).toHaveCount(0);
+    await expect(first.getByRole("button", { name: "Unstar conversation" })).toBeAttached();
+
+    const third = rows.nth(2);
+    await third.locator(".thread-open").click({ button: "right" });
+    await menu.getByRole("menuitem", { name: "Reply", exact: true }).click();
+    await expect(page.locator(".quick-reply")).toBeVisible();
+    await expect(page.locator(".quick-reply").getByText("Write a reply")).toBeVisible();
+    await expect(third).toHaveClass(/active/);
+
+    await first.locator(".row-check").click();
+    await second.locator(".row-check").click();
+    await second.locator(".thread-open").click({ button: "right" });
+    await expect(menu.getByText("2 conversations")).toBeVisible();
+    await menu.getByRole("menuitem", { name: /^Archive/ }).click();
+    await expect(page.getByText("2 conversations archived")).toBeVisible();
+    await expect(rows.filter({ hasText: firstSubject })).toHaveCount(0);
+    await expect(rows.filter({ hasText: secondSubject })).toHaveCount(0);
+
+    expect(
+      await electronApp.evaluate(
+        () => (globalThis as typeof globalThis & { nativeMenuShown?: boolean }).nativeMenuShown,
+      ),
+    ).toBeUndefined();
+  } finally {
+    await electronApp.close();
+    rmSync(dataDirectory, { recursive: true, force: true });
+  }
+});

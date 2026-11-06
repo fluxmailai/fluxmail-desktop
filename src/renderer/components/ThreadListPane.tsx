@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useState, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Virtuoso } from "react-virtuoso";
 import {
   Archive,
+  Forward,
   LoaderCircle,
   Mail,
   MailOpen,
@@ -10,6 +11,8 @@ import {
   Paperclip,
   Pencil,
   RefreshCw,
+  Reply,
+  ReplyAll,
   ShieldAlert,
   Star,
   Tag,
@@ -25,13 +28,22 @@ import type {
 } from "../../shared/contracts";
 import { threadKey } from "../App";
 import {
+  mailboxCanMarkSpam,
+  mailboxCanMove,
   mailboxDeleteAction,
   mailboxDeleteLabel,
   mailboxMoveAction,
   mailboxMoveLabel,
 } from "../mail-actions";
 import { KEYBOARD_SHORTCUTS, type KeyboardShortcutHint } from "../shortcuts";
-import { IconButton, MenuButton, SelectionCheckbox } from "./Controls";
+import type { InlineComposerMode } from "./ReadingPane";
+import {
+  ContextMenu,
+  IconButton,
+  MenuButton,
+  SelectionCheckbox,
+  type ContextMenuEntry,
+} from "./Controls";
 import { MailSearchBox } from "./MailSearchBox";
 import { OverlayScrollbar } from "./OverlayScrollbar";
 
@@ -60,6 +72,7 @@ interface Props {
   onToggleSelection(thread: ThreadSummary): void;
   onToggleSelectAll(): void;
   onModify(action: ModifyActionInput, threads?: ThreadSummary[]): Promise<void>;
+  onReply(thread: ThreadSummary, mode: InlineComposerMode): void;
   onLoadMore(): void;
   onRefresh(): void;
   onExpandSidebar(): void;
@@ -87,6 +100,40 @@ export function ThreadListPane(props: Props) {
     props.view,
     selectedThreads.every((thread) => props.permanentDeleteAccountIds.has(thread.accountId)),
   );
+  const [contextMenu, setContextMenu] = useState<{
+    id: number;
+    thread: ThreadSummary;
+    x: number;
+    y: number;
+  } | null>(null);
+  const contextMenuSequence = useRef(0);
+  const contextThreadKey = contextMenu ? threadKey(contextMenu.thread) : undefined;
+  useEffect(() => {
+    if (!contextThreadKey) return;
+    if (!props.threads.some((thread) => threadKey(thread) === contextThreadKey))
+      setContextMenu(null);
+  }, [contextThreadKey, props.threads]);
+  // Read the row from the current list, so a sync while the menu is open keeps its actions right.
+  const contextThread = contextMenu
+    ? (props.threads.find((thread) => threadKey(thread) === contextThreadKey) ?? contextMenu.thread)
+    : undefined;
+  const contextTargets = contextThread
+    ? props.selection.has(threadKey(contextThread)) && selectedThreads.length
+      ? selectedThreads
+      : [contextThread]
+    : [];
+  const contextMenuEntries = contextThread
+    ? threadContextMenuEntries({
+        view: props.view,
+        targets: contextTargets,
+        labels: props.labels,
+        allowPermanentDelete: contextTargets.every((thread) =>
+          props.permanentDeleteAccountIds.has(thread.accountId),
+        ),
+        onModify: (action) => void props.onModify(action, contextTargets),
+        onReply: (mode) => props.onReply(contextThread, mode),
+      })
+    : [];
   const groups = useMemo(
     () =>
       props.view === "scheduled"
@@ -150,7 +197,7 @@ export function ThreadListPane(props: Props) {
                 {selectedThreads.length} selected
               </span>
               <div className="selection-actions">
-                {props.view !== "scheduled" ? (
+                {mailboxCanMove(props.view) ? (
                   <IconButton
                     label={mailboxMoveLabel(props.view)}
                     shortcut={KEYBOARD_SHORTCUTS.archive}
@@ -191,7 +238,7 @@ export function ThreadListPane(props: Props) {
                     <Tag size={16} />
                   </MenuButton>
                 ) : null}
-                {props.view !== "scheduled" ? (
+                {mailboxCanMarkSpam(props.view) ? (
                   <MenuButton
                     label="More actions"
                     align="right"
@@ -256,9 +303,9 @@ export function ThreadListPane(props: Props) {
                   moveLabel={mailboxMoveLabel(props.view)}
                   restore={props.view === "trash"}
                   onMove={
-                    props.view === "scheduled"
-                      ? undefined
-                      : () => void props.onModify(mailboxMoveAction(props.view), [thread])
+                    mailboxCanMove(props.view)
+                      ? () => void props.onModify(mailboxMoveAction(props.view), [thread])
+                      : undefined
                   }
                   draftLabel={props.view === "scheduled" ? "Scheduled" : "Draft"}
                   onToggleRead={() =>
@@ -268,6 +315,10 @@ export function ThreadListPane(props: Props) {
                   }
                   onStar={() =>
                     void props.onModify({ type: thread.starred ? "unstar" : "star" }, [thread])
+                  }
+                  contextOpen={contextThreadKey === threadKey(thread)}
+                  onContextMenu={(point) =>
+                    setContextMenu({ id: ++contextMenuSequence.current, thread, ...point })
                   }
                 />
               );
@@ -287,6 +338,15 @@ export function ThreadListPane(props: Props) {
         )}
         <OverlayScrollbar scroller={scroller} fadeClass="thread-fade" />
       </div>
+      {contextMenu ? (
+        <ContextMenu
+          key={contextMenu.id}
+          label="Conversation actions"
+          position={contextMenu}
+          entries={contextMenuEntries}
+          onClose={() => setContextMenu(null)}
+        />
+      ) : null}
     </section>
   );
 }
@@ -303,6 +363,8 @@ export function ThreadRow({
   draftLabel = "Draft",
   onToggleRead,
   onStar,
+  contextOpen = false,
+  onContextMenu,
 }: {
   thread: ThreadSummary;
   active: boolean;
@@ -315,11 +377,21 @@ export function ThreadRow({
   draftLabel?: string;
   onToggleRead(): void;
   onStar(): void;
+  contextOpen?: boolean;
+  onContextMenu?(point: { x: number; y: number }): void;
 }) {
   return (
     <div
-      className={`thread-row ${active ? "active" : ""} ${thread.unread ? "unread" : ""}`}
+      className={`thread-row ${active ? "active" : ""} ${thread.unread ? "unread" : ""} ${contextOpen ? "context-open" : ""}`}
       onClick={onOpen}
+      onContextMenu={
+        onContextMenu
+          ? (event) => {
+              event.preventDefault();
+              onContextMenu(contextMenuPoint(event));
+            }
+          : undefined
+      }
     >
       <SelectionCheckbox
         state={checked ? "checked" : "unchecked"}
@@ -380,6 +452,129 @@ export function ThreadRow({
       </div>
     </div>
   );
+}
+
+/** A keyboard-opened menu (Shift+F10 or the menu key) has no pointer, so it opens below the row. */
+function contextMenuPoint(event: React.MouseEvent<HTMLElement>): { x: number; y: number } {
+  if (event.clientX || event.clientY) return { x: event.clientX, y: event.clientY };
+  const rect = event.currentTarget.getBoundingClientRect();
+  return { x: rect.left + 24, y: rect.top + rect.height / 2 };
+}
+
+export function threadContextMenuEntries({
+  view,
+  targets,
+  labels,
+  allowPermanentDelete,
+  onModify,
+  onReply,
+}: {
+  view: MailboxView;
+  targets: ThreadSummary[];
+  labels: string[];
+  allowPermanentDelete: boolean;
+  onModify(action: ModifyActionInput): void;
+  onReply?(mode: InlineComposerMode): void;
+}): ContextMenuEntry[] {
+  const entries: ContextMenuEntry[] = [];
+  if (targets.length > 1)
+    entries.push({ type: "heading", id: "count", label: `${targets.length} conversations` });
+  // Drafts open in their own editor, so only sent and received mail can be answered here.
+  if (
+    onReply &&
+    targets.length === 1 &&
+    !targets[0].draft &&
+    view !== "drafts" &&
+    view !== "scheduled"
+  ) {
+    entries.push(
+      {
+        id: "reply",
+        label: "Reply",
+        icon: <Reply size={15} />,
+        shortcut: KEYBOARD_SHORTCUTS.reply,
+        onSelect: () => onReply("reply"),
+      },
+      {
+        id: "replyAll",
+        label: "Reply all",
+        icon: <ReplyAll size={15} />,
+        shortcut: KEYBOARD_SHORTCUTS.replyAll,
+        onSelect: () => onReply("replyAll"),
+      },
+      {
+        id: "forward",
+        label: "Forward",
+        icon: <Forward size={15} />,
+        shortcut: KEYBOARD_SHORTCUTS.forward,
+        onSelect: () => onReply("forward"),
+      },
+      { type: "separator", id: "reply-separator" },
+    );
+  }
+  if (mailboxCanMove(view)) {
+    entries.push({
+      id: "move",
+      label: mailboxMoveLabel(view),
+      icon: view === "trash" ? <Undo2 size={15} /> : <Archive size={15} />,
+      shortcut: KEYBOARD_SHORTCUTS.archive,
+      onSelect: () => onModify(mailboxMoveAction(view)),
+    });
+  }
+  const deleteAction = mailboxDeleteAction(view, allowPermanentDelete);
+  if (deleteAction) {
+    entries.push({
+      id: "delete",
+      label: mailboxDeleteLabel(view),
+      icon: <Trash2 size={15} />,
+      shortcut: KEYBOARD_SHORTCUTS.trash,
+      danger: deleteAction.type === "delete",
+      onSelect: () => onModify(deleteAction),
+    });
+  }
+  entries.push({ type: "separator", id: "state-separator" });
+  const readAction = getSelectionReadAction(targets);
+  entries.push({
+    id: "read",
+    label: readAction === "markRead" ? "Mark as read" : "Mark as unread",
+    icon: readAction === "markRead" ? <MailOpen size={15} /> : <Mail size={15} />,
+    shortcut: KEYBOARD_SHORTCUTS.toggleRead,
+    onSelect: () => onModify({ type: readAction }),
+  });
+  const starAction = targets.every((thread) => thread.starred) ? "unstar" : "star";
+  entries.push({
+    id: "star",
+    label: starAction === "star" ? "Star" : "Unstar",
+    icon: <Star size={15} fill={starAction === "unstar" ? "currentColor" : "none"} />,
+    shortcut: KEYBOARD_SHORTCUTS.star,
+    onSelect: () => onModify({ type: starAction }),
+  });
+  if (labels.length) {
+    entries.push({
+      id: "labels",
+      label: "Label",
+      icon: <Tag size={15} />,
+      submenu: labels.map((label) => {
+        const applied = targets.every((thread) => thread.labels.includes(label));
+        return {
+          id: `label:${label}`,
+          label,
+          selected: applied,
+          onSelect: () =>
+            onModify({ type: applied ? "removeLabels" : "addLabels", labels: [label] }),
+        };
+      }),
+    });
+  }
+  if (mailboxCanMarkSpam(view)) {
+    entries.push({
+      id: "spam",
+      label: "Mark as spam",
+      icon: <ShieldAlert size={15} />,
+      onSelect: () => onModify({ type: "move", folder: "spam" }),
+    });
+  }
+  return entries;
 }
 
 export function getSelectionReadAction(

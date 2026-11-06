@@ -42,17 +42,21 @@ vi.mock("../src/renderer/components/Sidebar", () => ({
 vi.mock("../src/renderer/components/ThreadListPane", () => ({
   ThreadListPane: ({
     threads,
+    selection,
     onSelect,
     onToggleSelection,
     onModify,
+    onReply,
     searchText,
     onSearchText,
     onSearch,
   }: {
     threads: ThreadSummary[];
+    selection: Set<string>;
     onSelect(thread: ThreadSummary): void;
     onToggleSelection(thread: ThreadSummary): void;
     onModify(action: ModifyActionInput, threads: ThreadSummary[]): Promise<void>;
+    onReply(thread: ThreadSummary, mode: "reply" | "replyAll" | "forward"): void;
     searchText: string;
     onSearchText(value: string): void;
     onSearch(): void;
@@ -70,9 +74,11 @@ vi.mock("../src/renderer/components/ThreadListPane", () => ({
           key={thread.scheduleId ?? thread.id}
           data-testid={`thread-${thread.id}`}
           data-unread={String(thread.unread)}
+          data-selected={String(selection.has(`${thread.accountId}:${thread.id}`))}
         >
           <button onClick={() => onSelect(thread)}>{thread.subject}</button>
           <button onClick={() => onToggleSelection(thread)}>Select {thread.subject}</button>
+          <button onClick={() => onReply(thread, "reply")}>Reply from {thread.subject}</button>
           <button onClick={() => void onModify({ type: "archive" }, [thread])}>
             Archive {thread.subject}
           </button>
@@ -1257,6 +1263,49 @@ describe("App thread navigation", () => {
     fireEvent.keyDown(window, { key: "f" });
     expect(screen.getByText("Inline forward")).toBeTruthy();
     expect(screen.queryByRole("dialog", { name: "Compose" })).toBeNull();
+  });
+
+  it("opens the inline composer for a conversation replied to from the list", async () => {
+    const first = thread("thread-1", "First conversation", false);
+    const second = thread("thread-2", "Second conversation", false);
+    installApi(
+      [first, second],
+      vi.fn(async ({ threadId }) =>
+        mailThread([first, second].find((item) => item.id === threadId)!),
+      ),
+    );
+    installMatchMedia();
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: first.subject }));
+
+    fireEvent.click(screen.getByRole("button", { name: `Reply from ${second.subject}` }));
+
+    expect(await screen.findByText(`Reading ${second.subject}`)).toBeTruthy();
+    expect(await screen.findByText("Inline reply")).toBeTruthy();
+  });
+
+  it("keeps the selection when an action targets a conversation outside it", async () => {
+    const first = thread("thread-1", "First conversation", false);
+    const second = thread("thread-2", "Second conversation", false);
+    const third = thread("thread-3", "Third conversation", false);
+    installApi(
+      [first, second, third],
+      vi.fn(async ({ threadId }) =>
+        mailThread([first, second, third].find((item) => item.id === threadId)!),
+      ),
+    );
+    installMatchMedia();
+    render(<App />);
+    await screen.findByRole("button", { name: first.subject });
+    fireEvent.click(screen.getByRole("button", { name: `Select ${first.subject}` }));
+    fireEvent.click(screen.getByRole("button", { name: `Select ${second.subject}` }));
+
+    fireEvent.click(screen.getByRole("button", { name: `Star ${third.subject}` }));
+
+    await waitFor(() => expect(window.fluxmail.mail.modify).toHaveBeenCalledOnce());
+    await act(async () => undefined);
+    expect(screen.getByTestId("thread-thread-1").dataset.selected).toBe("true");
+    expect(screen.getByTestId("thread-thread-2").dataset.selected).toBe("true");
   });
 
   it("opens conversation find with Command+F and Control+F", async () => {
