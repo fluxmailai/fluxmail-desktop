@@ -28,3 +28,7 @@ Renovate opens the dependency PRs. CI and packaging run `pnpm notices:generate`,
 # Commit messages
 
 Use Conventional Commits for commit messages and PR titles: `type(scope): description`. The scope is optional. Use `feat` for features, `fix` for bug fixes, and `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `style`, or `revert` as appropriate. Write a short, imperative description, such as `fix(cloud): handle Gmail timeouts`. Mark breaking changes with `!` before the colon, such as `feat(api)!: require a mailbox ID`.
+
+# Code review before commits
+
+Before each commit, run `/code-review --fix` on all uncommitted changes, including new untracked files, and fix every issue it flags. If you leave a finding unfixed on purpose, tell the user which one and why. Then record the review with `node .claude/hooks/require-code-review.mjs --mark` and commit. A hook in `.claude/settings.json` blocks `git commit` until the recorded review matches the current files, so an edit made after the review needs another review. Run anything that changes files, such as a formatter, in its own Bash command before the commit, because the hook checks the files before the command runs.
