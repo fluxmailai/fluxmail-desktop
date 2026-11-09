@@ -413,14 +413,26 @@ export function ContextMenu({
       const target = event.target;
       if (!(target instanceof Node) || !rootRef.current?.contains(target)) close();
     };
+    // The menu takes focus a frame after it opens, so a quick Escape can still land outside it.
+    // The menu's own key handler covers Escape once focus is inside.
+    const closeOnEscapeOutside = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      const target = event.target;
+      if (target instanceof Node && rootRef.current?.contains(target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+    };
     window.addEventListener("blur", close);
     window.addEventListener("resize", close);
     document.addEventListener("scroll", closeIfOutside, true);
+    document.addEventListener("keydown", closeOnEscapeOutside, true);
     return () => {
       window.clearTimeout(submenuCloseTimer.current);
       window.removeEventListener("blur", close);
       window.removeEventListener("resize", close);
       document.removeEventListener("scroll", closeIfOutside, true);
+      document.removeEventListener("keydown", closeOnEscapeOutside, true);
     };
   }, []);
 
