@@ -6,7 +6,7 @@ When a branch changes this file, review it under both the base's version and the
 
 ## Review depth
 
-Use `low` when every changed file is `README.md` or a PNG image under `build/`, whatever the size of the change.
+Use `medium` when every changed file is `README.md` or a PNG image under `build/`, whatever the size of the change.
 
 Otherwise, use `xhigh` when any changed file is in one of these paths:
 
