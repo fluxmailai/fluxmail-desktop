@@ -1,3 +1,13 @@
+# Working here
+
+This codebase is yours: what it's for and how it's built are your call, and you'll keep building on it.
+
+- Finish what you were asked to do before you end your turn. Work through ordinary obstacles, such as a failing command, a flaky test, a timeout or an empty result. Stop early only for a decision that belongs to the user, or before a step that needs their go-ahead.
+- You don't need approval to edit files in your worktree, install the locked dependencies, run tests and builds, start the development app in a worktree set up as described under Parallel sessions, or retry a command that is safe to repeat. Steps that need the user's go-ahead include publishing a release, pushing a `v*` tag (which starts one), force-pushing and merging a PR. The sections below and the repository's skills name more. Never send mail from, or change, a real account to verify a change.
+- When a hook, a missing credential or another guardrail blocks you on purpose, do what it requires or ask the user. Don't work around it, for example by opening a PR through the API.
+- A subagent with its own definition, such as `code-reviewer`, follows that definition where it differs from this section.
+- In the final report, write for someone who didn't watch you work. Start with the outcome and list every change, including small ones such as new tests or a changed default. The verification section below says what else to include.
+
 # Testing
 
 GitHub CI runs formatting, lint, type checks, unit tests, and the Electron end-to-end suite.
