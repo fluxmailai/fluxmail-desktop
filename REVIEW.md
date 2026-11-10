@@ -15,7 +15,7 @@ Otherwise, use `xhigh` when any changed file is in one of these paths:
 - Accounts, stored data and licensing: `src/main/oauth.ts`, `vite.main.config.ts`, `src/main/cache.ts`, `src/main/cache-cipher.ts`, `src/main/preferences.ts`, `src/main/fluxmail-runtime.ts`
 - Website services and telemetry: `src/main/image-relay.ts`, `src/shared/image-relay.ts`, `src/main/analytics.ts`
 - Updates, release and packaging: `src/main/updater.ts`, `.github/`, `.agents/skills/release/`, `forge.config.ts`, `build/entitlements.mac.plist`, `scripts/update-manifests.mjs`, `scripts/release-notes.mjs`, `scripts/generate-third-party-notices.mjs`, `package.json`, `pnpm-workspace.yaml`, `CHANGELOG.md`
-- The review process: `REVIEW.md`, `.claude/agents/`, `.claude/hooks/`, `.claude/settings.json`
+- The review process: `REVIEW.md`, `AGENTS.md`, `CLAUDE.md`, `.claude/agents/`, `.claude/hooks/`, `.claude/settings.json`
 
 Also use `xhigh` when the branch adds and deletes more than 1,000 lines of text in total. Don't count binary files or the files listed under Skip.
 
@@ -29,7 +29,7 @@ Run one too when the diff anywhere renders mail content, opens a URL or file, ad
 
 ## Failures to look for
 
-Report these as Important:
+Report every correctness bug and every High or Medium security finding as Important. Report these as Important too:
 
 - A renderer that gets more reach than it needs: Node integration, a disabled sandbox or context isolation, a loosened Content Security Policy, or a preload or IPC channel that exposes general file, shell or network access. IPC handlers must check the sender and validate every argument.
 - Mail content that can run script, load remote content the user didn't allow, leak the user's address or IP through tracking pixels, or navigate the app window. Treat every message, attachment name and link as hostile.
