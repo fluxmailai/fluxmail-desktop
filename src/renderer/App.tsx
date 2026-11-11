@@ -683,7 +683,9 @@ export function App() {
 
   const handleThreadLoaded = useCallback((thread: ThreadSummary) => {
     const key = threadKey(thread);
-    loadedThread.current = key;
+    // A load the reader moved away from can finish after the open conversation's load.
+    const selected = selectedThreadRef.current;
+    if (selected && threadKey(selected) === key) loadedThread.current = key;
     pendingReads.current.get(key)?.send();
   }, []);
 

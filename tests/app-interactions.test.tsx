@@ -116,7 +116,10 @@ vi.mock("../src/renderer/components/ReadingPane", async () => {
       ref,
     ) {
       const [composerMode, setComposerMode] = React.useState<string>();
+      // Conversations this pane has opened, so a test can finish an earlier load late.
+      const [openedThreads, setOpenedThreads] = React.useState<ThreadSummary[]>([]);
       React.useEffect(() => {
+        if (thread) setOpenedThreads((current) => [...current, thread]);
         if (thread && !readingPaneLoads.hold) onThreadLoaded?.(thread);
         // The real pane loads a conversation when its identity changes.
       }, [thread?.accountId, thread?.id]);
@@ -142,6 +145,11 @@ vi.mock("../src/renderer/components/ReadingPane", async () => {
               <button onClick={() => onThreadLoaded?.(thread)}>Finish loading</button>
             </>
           ) : null}
+          {openedThreads.map((opened) => (
+            <button key={opened.id} onClick={() => onThreadLoaded?.(opened)}>
+              Finish loading {opened.subject}
+            </button>
+          ))}
         </section>
       );
     }),
@@ -1052,6 +1060,38 @@ describe("App thread navigation", () => {
       [{ targets: [target], action: { type: "markRead" }, undoable: false }],
       [{ targets: [target], action: { type: "markUnread" } }],
     ]);
+  });
+
+  it("marks the next conversation read after archive when the archived one loads late", async () => {
+    const first = thread("thread-1", "First conversation", false);
+    const second = { ...thread("thread-2", "Second conversation", false), unread: true };
+    let finishArchive!: () => void;
+    const pendingArchive = new Promise<{ undoToken?: string }>((resolve) => {
+      finishArchive = () => resolve({});
+    });
+    installApi(
+      [first, second],
+      vi.fn(async ({ threadId }) => mailThread(threadId === first.id ? first : second)),
+    );
+    vi.mocked(window.fluxmail.mail.modify).mockReturnValueOnce(pendingArchive);
+    installMatchMedia();
+    readingPaneLoads.hold = true;
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: first.subject }));
+    fireEvent.keyDown(window, { key: "e" });
+    expect(screen.getByText(`Reading ${second.subject}`)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: `Finish loading ${second.subject}` }));
+    fireEvent.click(screen.getByRole("button", { name: `Finish loading ${first.subject}` }));
+    await act(async () => finishArchive());
+
+    await waitFor(() =>
+      expect(window.fluxmail.mail.modify).toHaveBeenCalledWith({
+        targets: [{ accountId: second.accountId, threadId: second.id }],
+        action: { type: "markRead" },
+        undoable: false,
+      }),
+    );
   });
 
   it("does not advance when archiving in All Mail", async () => {
