@@ -2,7 +2,19 @@
 
 Fluxmail Desktop records user-facing changes in this file. The format follows [Common Changelog](https://common-changelog.org/).
 
-## [Unreleased](https://github.com/fluxmailai/fluxmail-desktop/compare/v0.9.0...HEAD)
+## [Unreleased](https://github.com/fluxmailai/fluxmail-desktop/compare/v0.9.1...HEAD)
+
+## [0.9.1](https://github.com/fluxmailai/fluxmail-desktop/releases/tag/v0.9.1) - 2026-11-11
+
+_These artifacts use Fluxmail's self-signed certificate and have not been notarized by Apple, so macOS will require approval before opening the app._
+
+### Changed
+
+- Move the shared Fluxmail store to format 8 after making a backup. If you use the CLI with the same store, quit Desktop and stop any CLI processes before upgrading and use Fluxmail CLI 0.25.0 or later after the migration ([upgrade guide](https://fluxmail.ai/docs/upgrades/0.25.0/)).
+
+### Fixed
+
+- Open Fluxmail data in format 8, including stores already upgraded by Fluxmail CLI 0.25.0 or later.
 
 ## [0.9.0](https://github.com/fluxmailai/fluxmail-desktop/releases/tag/v0.9.0) - 2026-11-11
 

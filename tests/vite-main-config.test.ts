@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { dependencies } from "../package.json";
 import { afterEach, describe, expect, it } from "vitest";
 import { VERSION as reportedFluxmailEngineVersion } from "fluxmail";
 import {
@@ -19,7 +20,7 @@ afterEach(() => {
 describe("main Vite configuration", () => {
   it("uses the pinned Fluxmail npm package", () => {
     expect(loadInstalledFluxmailVersion()).toBe(reportedFluxmailEngineVersion);
-    expect(reportedFluxmailEngineVersion).toBe("0.20.0");
+    expect(reportedFluxmailEngineVersion).toBe(dependencies.fluxmail);
   });
 
   it("leaves native dependencies for Electron to load", () => {

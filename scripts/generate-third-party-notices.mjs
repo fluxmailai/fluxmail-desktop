@@ -18,18 +18,18 @@ const packagesCoveredByParentNotice = new Set([
 // Keep immutable upstream sources beside each fallback so license changes can be reviewed.
 const reviewedLicenseFallbacks = new Map([
   [
-    "@hono/zod-openapi@0.19.10",
+    "@hono/zod-openapi@1.6.3",
     {
       license: "MIT",
       file: "hono-middleware.txt",
       sources: [
-        "https://github.com/honojs/middleware/tree/3705fe6560121c3dd1c933ab8302095aed23d16d/packages/zod-openapi",
+        "https://github.com/honojs/middleware/tree/bc7d9e67119f870b5275569b371676663c74c976/packages/zod-openapi",
         "https://github.com/honojs/node-server/blob/3b1dd6875812e0b5aee43ec3fac66c191fd6251f/LICENSE",
       ],
     },
   ],
   [
-    "@hono/zod-validator@0.7.6",
+    "@hono/zod-validator@0.9.1",
     {
       license: "MIT",
       file: "hono-middleware.txt",
@@ -60,18 +60,6 @@ const reviewedLicenseFallbacks = new Map([
     },
   ],
   [
-    "@posthog/core@1.41.1",
-    {
-      license: "MIT",
-      file: "posthog-core.txt",
-      package: "@posthog/types@1.394.0",
-      sources: [
-        "https://github.com/PostHog/posthog-js/blob/6d9c3148ddd79175598f8d08483a6a8b2b4004b2/packages/core/package.json",
-        "https://github.com/PostHog/posthog-js/blob/6d9c3148ddd79175598f8d08483a6a8b2b4004b2/LICENSE",
-      ],
-    },
-  ],
-  [
     "data-uri-to-buffer@4.0.1",
     {
       license: "MIT",
@@ -82,12 +70,12 @@ const reviewedLicenseFallbacks = new Map([
     },
   ],
   [
-    "drizzle-orm@0.45.2",
+    "drizzle-orm@0.45.4",
     {
       license: "Apache-2.0",
       file: "drizzle-orm.txt",
       sources: [
-        "https://github.com/drizzle-team/drizzle-orm/blob/273c78071d4841b497f5144734b38294df7ec64b/LICENSE",
+        "https://github.com/drizzle-team/drizzle-orm/blob/eab8bedbb65d5429c54e612ddbd88aa23091d398/LICENSE",
       ],
     },
   ],
@@ -120,26 +108,38 @@ const reviewedLicenseConflicts = new Map([
     },
   ],
   [
-    "@posthog/types@1.394.0",
+    "@posthog/core@1.63.1",
     {
       license: "MIT",
       bundledLicense: "Apache-2.0",
       file: "posthog-core.txt",
       sources: [
-        "https://github.com/PostHog/posthog-js/blob/d35f5f14f1a070aa2f1cb7d6bb8886969447440c/packages/types/package.json",
-        "https://github.com/PostHog/posthog-js/blob/d35f5f14f1a070aa2f1cb7d6bb8886969447440c/LICENSE",
+        "https://github.com/PostHog/posthog-js/blob/5ce520f2e44c68ff782f4417840e37ef9642b029/packages/core/package.json",
+        "https://github.com/PostHog/posthog-js/blob/5ce520f2e44c68ff782f4417840e37ef9642b029/LICENSE",
       ],
     },
   ],
   [
-    "posthog-node@5.42.0",
+    "@posthog/types@1.419.0",
     {
       license: "MIT",
       bundledLicense: "Apache-2.0",
       file: "posthog-core.txt",
       sources: [
-        "https://github.com/PostHog/posthog-js/blob/d35f5f14f1a070aa2f1cb7d6bb8886969447440c/packages/node/package.json",
-        "https://github.com/PostHog/posthog-js/blob/d35f5f14f1a070aa2f1cb7d6bb8886969447440c/LICENSE",
+        "https://github.com/PostHog/posthog-js/blob/e1dc7f07f43bc80dfd135a70dd03e2c8eed1dade/packages/types/package.json",
+        "https://github.com/PostHog/posthog-js/blob/e1dc7f07f43bc80dfd135a70dd03e2c8eed1dade/LICENSE",
+      ],
+    },
+  ],
+  [
+    "posthog-node@5.61.2",
+    {
+      license: "MIT",
+      bundledLicense: "Apache-2.0",
+      file: "posthog-core.txt",
+      sources: [
+        "https://github.com/PostHog/posthog-js/blob/fb0c941cb11c3d6bc2d9b623e6db5f5bae55c122/packages/node/package.json",
+        "https://github.com/PostHog/posthog-js/blob/fb0c941cb11c3d6bc2d9b623e6db5f5bae55c122/LICENSE",
       ],
     },
   ],
