@@ -27,20 +27,23 @@ describe("third-party software notices", () => {
   });
 
   it("uses reviewed fallbacks when packages omit their license files", () => {
-    expect(noticeFor("@posthog/core")).toContain("Copyright 2020 Posthog / Hiberly, Inc.");
-    expect(noticeFor("@posthog/core")).toContain("Permission is hereby granted");
-    expect(noticeFor("@posthog/core")).toContain("Apache License");
     expect(noticeFor("drizzle-orm")).toContain("Apache License");
     expect(noticeFor("eastasianwidth")).toContain("Copyright (c) 2013 Masaki Komagata");
   });
 
   it("preserves reviewed notices when package metadata conflicts with the bundled license", () => {
-    for (const packageName of ["@pkgjs/parseargs", "@posthog/types", "posthog-node"]) {
+    for (const packageName of [
+      "@pkgjs/parseargs",
+      "@posthog/core",
+      "@posthog/types",
+      "posthog-node",
+    ]) {
       const notice = noticeFor(packageName);
       expect(notice).toContain("Declared license: MIT");
       expect(notice).toContain("Permission is hereby granted");
       expect(notice).toContain("Apache License");
     }
+    expect(noticeFor("@posthog/core")).toContain("Copyright 2020 Posthog / Hiberly, Inc.");
   });
 
   it("includes a license body for every package", () => {
