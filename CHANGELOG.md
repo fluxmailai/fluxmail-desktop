@@ -10,14 +10,14 @@ _These artifacts use Fluxmail's self-signed certificate and have not been notari
 
 ### Added
 
-- Download updates in the background when Fluxmail is installed in Applications, then use **Restart to update** in the sidebar to install them ([#86](https://github.com/fluxmailai/fluxmail-desktop/pull/86))
+- Download future updates in the background after you manually install 0.9.0 in Applications, then click **Restart to update** in the sidebar when an update is ready ([#86](https://github.com/fluxmailai/fluxmail-desktop/pull/86))
 - Right-click a conversation to reply, forward, or manage it from the list, and right-click a selection to act on multiple conversations ([#110](https://github.com/fluxmailai/fluxmail-desktop/pull/110))
 
 ### Fixed
 
 - Show **Update Fluxmail to continue** when your data comes from a newer version ([#88](https://github.com/fluxmailai/fluxmail-desktop/pull/88))
 - Quit and restart properly from the startup error screen ([#88](https://github.com/fluxmailai/fluxmail-desktop/pull/88))
-- Stop macOS from asking for your Keychain password when you open email after an update ([#85](https://github.com/fluxmailai/fluxmail-desktop/pull/85))
+- Stop the remaining macOS Keychain password prompt when you open email after an update ([#85](https://github.com/fluxmailai/fluxmail-desktop/pull/85))
 - Update the unread count as soon as you mark a conversation read or unread ([#108](https://github.com/fluxmailai/fluxmail-desktop/pull/108))
 - Keep the refresh icon spinning while the open mailbox syncs ([#105](https://github.com/fluxmailai/fluxmail-desktop/pull/105))
 
