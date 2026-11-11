@@ -885,12 +885,12 @@ export class FluxmailRuntime {
               );
               for (const { target, messageIds } of resolved)
                 sentMessageIds.set(threadTargetKey(target), messageIds);
-              const result = await this.context.service.modify(
+              const succeededIds = await this.modifyMessages(
                 accountId,
                 [...new Set(resolved.flatMap(({ messageIds }) => messageIds))],
                 toModifyAction(action),
               );
-              for (const messageId of result?.succeededIds ?? [])
+              for (const messageId of succeededIds)
                 confirmedMessageIds.add(`${accountId}\u0000${messageId}`);
               return {
                 accountId,
@@ -1092,11 +1092,7 @@ export class FluxmailRuntime {
                 entry.action,
               );
               for (const operation of operations) {
-                await this.context.service.modify(
-                  accountId,
-                  operation.messageIds,
-                  operation.action,
-                );
+                await this.modifyMessages(accountId, operation.messageIds, operation.action);
               }
               return accountId;
             }),
@@ -1884,7 +1880,10 @@ export class FluxmailRuntime {
       ...(input.bcc?.length ? { bcc: input.bcc } : {}),
       subject: input.subject,
       body,
-      ...(input.replyToMessageId ? { replyToMessageId: input.replyToMessageId } : {}),
+      // Desktop adds the quote when sending or scheduling, after editing the draft.
+      ...(input.replyToMessageId
+        ? { replyToMessageId: input.replyToMessageId, quoteOriginal: false }
+        : {}),
       ...(input.replyAll ? { replyAll: true } : {}),
       ...(attachments?.length ? { attachments } : {}),
     };
@@ -1914,6 +1913,35 @@ export class FluxmailRuntime {
       });
       throw error;
     }
+  }
+
+  private async modifyMessages(
+    accountId: string,
+    messageIds: string[],
+    action: ModifyAction,
+  ): Promise<string[]> {
+    const modify = (ids: string[]) => this.context.service.modify(accountId, ids, action);
+    if (messageIds.length < 2 || messageIds.length > 100 || action === "delete") {
+      return (await modify(messageIds))?.succeededIds ?? [];
+    }
+    const { provider } = this.requireAccount(accountId);
+    if (provider === "gmail" && action !== "trash" && action !== "untrash") {
+      return (await modify(messageIds))?.succeededIds ?? [];
+    }
+
+    // Keep trying the remaining messages if one Outlook, IMAP, or Gmail trash request fails.
+    const succeededIds: string[] = [];
+    const concurrency = 4;
+    for (let start = 0; start < messageIds.length; start += concurrency) {
+      const batch = await Promise.allSettled(
+        messageIds.slice(start, start + concurrency).map((messageId) => modify([messageId])),
+      );
+      for (const result of batch) {
+        if (result.status === "rejected") throw result.reason;
+        succeededIds.push(...(result.value?.succeededIds ?? []));
+      }
+    }
+    return succeededIds;
   }
 
   private enqueueProviderMutation<T>(accountId: string, work: () => Promise<T>): Promise<T> {

@@ -1011,6 +1011,51 @@ describe("FluxmailRuntime conversation mutations", () => {
     expect(cache.getThread(account.id, "thread-1")?.messages[1]?.body?.text).toBe("two");
   });
 
+  it.each([
+    ["outlook", "markRead"],
+    ["imap", "markRead"],
+    ["gmail", "trash"],
+    ["gmail", "untrash"],
+  ] as const)(
+    "attempts each %s %s when one message rejects a bulk action",
+    async (provider, type) => {
+      const cache = createCache();
+      const mailbox: AccountInfo = { ...account, provider };
+      const first = inboxMessage({ id: "message-1", threadId: "thread-1" });
+      const second = inboxMessage({ id: "message-2", threadId: "thread-1" });
+      if (type === "untrash") {
+        first.folder = second.folder = { id: "TRASH", name: "Trash", role: "trash" };
+      }
+      const getThread = vi.fn(async () => ({
+        id: "thread-1",
+        subject: first.subject,
+        messages: structuredClone([first, second]),
+      }));
+      cache.putThread(mailbox, await getThread());
+      const modify = vi.fn(async (_accountId: string, ids: string[]) => {
+        if (ids.length > 1) return { succeededIds: [], uncertainIds: ids };
+        if (ids[0] === first.id) {
+          return { succeededIds: [], failed: [{ messageId: first.id, code: "permission_denied" }] };
+        }
+        if (type === "markRead") second.flags.read = true;
+        else if (type === "trash") second.folder = { id: "TRASH", name: "Trash", role: "trash" };
+        else second.folder = { id: "INBOX", name: "Inbox", role: "inbox" };
+        return { succeededIds: ids };
+      });
+      const runtime = createRuntimeWithCache({
+        cache,
+        service: { getThread, modify },
+        accounts: [mailbox],
+        onCacheChanged: vi.fn(),
+      });
+
+      await runtime.modify([{ accountId: mailbox.id, threadId: "thread-1" }], { type }, false);
+
+      expect(modify.mock.calls.map(([, ids]) => ids)).toEqual([[first.id], [second.id]]);
+      expect(cache.getThread(mailbox.id, "thread-1")?.messages).toMatchObject([first, second]);
+    },
+  );
+
   it("lowers the provider's inbox unread count while a read change is in flight", async () => {
     const cache = createCache();
     const message = inboxMessage({ id: "message-1", threadId: "thread-1", body: { text: "one" } });
@@ -2167,6 +2212,7 @@ describe("FluxmailRuntime draft mutations", () => {
     expect(createDraft).toHaveBeenCalledWith(
       account.id,
       expect.objectContaining({
+        quoteOriginal: false,
         body: { text: "Reply", html: "<p>Reply</p>" },
       }),
     );
@@ -2174,6 +2220,7 @@ describe("FluxmailRuntime draft mutations", () => {
       account.id,
       "draft-1",
       expect.objectContaining({
+        quoteOriginal: false,
         body: {
           text: expect.stringContaining("\n> Original message"),
           html: expect.stringContaining('class="gmail_quote gmail_quote_container"'),
@@ -3057,6 +3104,7 @@ describe("FluxmailRuntime draft mutations", () => {
     expect(send).toHaveBeenCalledWith(
       account.id,
       expect.objectContaining({
+        quoteOriginal: false,
         replyToMessageId: "original",
         body: {
           text: expect.stringMatching(/^Reply\n\nOn .+ Friend <friend@example\.com> wrote:/),
@@ -3541,12 +3589,12 @@ describe("FluxmailRuntime OAuth configuration", () => {
 });
 
 describe("FluxmailRuntime store compatibility", () => {
-  it("accepts a store that has already been upgraded to format 5", () => {
-    const directory = mkdtempSync(path.join(tmpdir(), "fluxmail-format-five-"));
+  it.each([5, 8])("accepts a store that has already been upgraded to format %i", (format) => {
+    const directory = mkdtempSync(path.join(tmpdir(), `fluxmail-format-${format}-`));
     directories.push(directory);
     const dbPath = path.join(directory, "fluxmail.db");
     const sqlite = new Database(dbPath);
-    sqlite.pragma("user_version = 5");
+    sqlite.pragma(`user_version = ${format}`);
     sqlite.close();
 
     const fluxmail = {
@@ -3555,7 +3603,7 @@ describe("FluxmailRuntime store compatibility", () => {
       IncompatibleStoreError,
     };
 
-    expect(MAX_SUPPORTED_STORE_FORMAT).toBeGreaterThanOrEqual(5);
+    expect(MAX_SUPPORTED_STORE_FORMAT).toBeGreaterThanOrEqual(format);
     expect(prepareFluxmailConfiguration(fluxmail, "", "")).toBe(false);
   });
 

@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { dependencies } from "../package.json";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({
@@ -43,7 +44,7 @@ describe("DesktopAnalytics", () => {
         client_platform: "desktop",
         deployment_environment: "production",
         desktop_app_version: "0.1.0",
-        mcp_version: "0.20.0",
+        mcp_version: dependencies.fluxmail,
         feature: "search",
         action: "submitted",
         source: "toolbar",
