@@ -161,6 +161,116 @@ describe("ReadingPane", () => {
     expect(screen.getByRole("button", { name: "Expand message" })).toBeTruthy();
   });
 
+  it("collapses older read messages and expands unread ones and the newest", async () => {
+    const thread = threadWithMessages("Long conversation", [true, false, true, true]);
+    Object.defineProperty(window, "fluxmail", {
+      configurable: true,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread: vi.fn(async () => thread) },
+      } as unknown as FluxmailDesktopApi,
+    });
+    renderPane(summary({ messageCount: 4 }));
+
+    await screen.findByText("Long conversation");
+
+    expect(messageToggleLabels()).toEqual([
+      "Expand message",
+      "Collapse message",
+      "Expand message",
+      "Collapse message",
+    ]);
+    expect(screen.getAllByText("Email body")).toHaveLength(2);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Expand message" })[0]!);
+
+    expect(messageToggleLabels()[0]).toBe("Collapse message");
+    expect(screen.getAllByText("Email body")).toHaveLength(3);
+  });
+
+  it("collapses messages read since a remembered conversation was first opened", async () => {
+    let read = false;
+    const getThread = vi.fn(async ({ threadId }: { threadId: string }) =>
+      threadId === "thread-1"
+        ? threadWithMessages("Remembered conversation", [read, read])
+        : { ...detail("Other conversation", "other-message"), id: threadId },
+    );
+    Object.defineProperty(window, "fluxmail", {
+      configurable: true,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread },
+      } as unknown as FluxmailDesktopApi,
+    });
+    const { rerender } = renderPane(summary({ messageCount: 2 }));
+    await screen.findByText("Remembered conversation");
+    expect(messageToggleLabels()).toEqual(["Collapse message", "Collapse message"]);
+
+    rerender(paneElement(summary({ id: "thread-2" })));
+    await screen.findByText("Other conversation");
+    read = true;
+    rerender(paneElement(summary({ messageCount: 2 })));
+
+    expect(messageToggleLabels()).toEqual(["Expand message", "Collapse message"]);
+    await waitFor(() => expect(getThread).toHaveBeenCalledTimes(3));
+    expect(messageToggleLabels()).toEqual(["Expand message", "Collapse message"]);
+  });
+
+  it("keeps the reader's expanded messages when the open conversation reloads", async () => {
+    let thread = threadWithMessages("Growing conversation", [true, true, false]);
+    Object.defineProperty(window, "fluxmail", {
+      configurable: true,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread: vi.fn(async () => thread) },
+      } as unknown as FluxmailDesktopApi,
+    });
+    const { rerender } = renderPane(summary({ messageCount: 3 }));
+    await screen.findByText("Growing conversation");
+    fireEvent.click(screen.getAllByRole("button", { name: "Expand message" })[0]!);
+    expect(messageToggleLabels()).toEqual([
+      "Collapse message",
+      "Expand message",
+      "Collapse message",
+    ]);
+
+    // A reply arrives after the conversation was marked read.
+    thread = threadWithMessages("Growing conversation", [true, true, true, false]);
+    rerender(paneElement(summary({ messageCount: 4 })));
+
+    await waitFor(() => expect(messageToggleLabels()).toHaveLength(4));
+    expect(messageToggleLabels()).toEqual([
+      "Collapse message",
+      "Expand message",
+      "Collapse message",
+      "Collapse message",
+    ]);
+  });
+
+  it("reports when a conversation finishes loading, even when it fails", async () => {
+    const onThreadLoaded = vi.fn();
+    const getThread = vi
+      .fn<() => Promise<MailThread>>()
+      .mockResolvedValueOnce(detail("Loaded conversation", "message-1"))
+      .mockRejectedValueOnce(new Error("Offline"));
+    Object.defineProperty(window, "fluxmail", {
+      configurable: true,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread },
+      } as unknown as FluxmailDesktopApi,
+    });
+    const first = summary();
+    const { rerender } = renderPane(first, { onThreadLoaded });
+    await screen.findByText("Loaded conversation");
+    expect(onThreadLoaded).toHaveBeenCalledWith(first);
+
+    const second = summary({ id: "thread-2" });
+    rerender(paneElement(second, { onThreadLoaded }));
+
+    await waitFor(() => expect(onThreadLoaded).toHaveBeenCalledWith(second));
+  });
+
   it("shows full To, CC, and BCC recipient addresses", async () => {
     const thread = detail("Recipient details", "message-1");
     thread.messages[0]!.to = [
@@ -797,7 +907,7 @@ describe("ReadingPane", () => {
     );
 
     await screen.findByText("Pending reply");
-    expect(screen.getAllByRole("button", { name: "Collapse message" })).toHaveLength(2);
+    expect(messageToggleLabels()).toEqual(["Expand message", "Collapse message"]);
     expect(screen.queryByRole("region", { name: "Draft" })).toBeNull();
     expect(screen.queryByLabelText("Subject")).toBeNull();
   });
@@ -1312,6 +1422,7 @@ interface PaneOptions {
   allowPermanentDelete?: boolean;
   strict?: boolean;
   onDraftFinished?: () => void;
+  onThreadLoaded?: (thread: ThreadSummary) => void;
   ref?: React.Ref<ReadingPaneHandle>;
 }
 
@@ -1336,6 +1447,7 @@ function paneElement(thread: ThreadSummary, options: PaneOptions = {}) {
       undoSendDelaySeconds={0}
       quickReplyDiscardVersion={options.quickReplyDiscardVersion}
       onDraftFinished={options.onDraftFinished}
+      onThreadLoaded={options.onThreadLoaded}
     />
   );
 }
@@ -1372,6 +1484,23 @@ function quotedDraftBody(reply: string, quoted: MailMessage): { html: string; te
       "</blockquote></div>",
     text: `${reply}\n\n${citation}\n> Receipt`,
   };
+}
+
+function threadWithMessages(subject: string, read: boolean[]): MailThread {
+  const thread = detail(subject, "message-1");
+  thread.messages = read.map((isRead, index) => ({
+    ...thread.messages[0]!,
+    id: `message-${index + 1}`,
+    date: `2026-07-1${index + 1}T12:00:00Z`,
+    flags: { read: isRead, starred: false, draft: false },
+  }));
+  return thread;
+}
+
+function messageToggleLabels(): Array<string | null> {
+  return screen
+    .getAllByRole("button", { name: /^(Collapse|Expand) message$/ })
+    .map((button) => button.getAttribute("aria-label"));
 }
 
 function detail(subject: string, messageId: string): MailThread {
