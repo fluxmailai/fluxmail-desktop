@@ -13,6 +13,7 @@ import {
   shouldOptimisticallyRemoveFromView,
   threadKey,
   threadsToPrefetch,
+  withPendingReads,
 } from "../src/renderer/App";
 import { parseAddressField, replyRecipient } from "../src/renderer/components/ComposeDialog";
 import {
@@ -22,6 +23,21 @@ import {
   mailboxMoveLabel,
 } from "../src/renderer/mail-actions";
 import type { ThreadPage, ThreadSummary } from "../src/shared/contracts";
+
+describe("pending reads", () => {
+  it("shows conversations waiting to be marked read as read", () => {
+    const waiting = { ...thread("thread-1"), unread: true };
+    const other = { ...thread("thread-2"), unread: true };
+    const pending = new Map([[threadKey(waiting), undefined]]);
+
+    expect(withPendingReads([waiting, other], pending)).toEqual([
+      { ...waiting, unread: false },
+      other,
+    ]);
+    const threads = [waiting];
+    expect(withPendingReads(threads, new Map())).toBe(threads);
+  });
+});
 
 describe("thread prefetching", () => {
   const threads = Array.from({ length: 12 }, (_, index) => thread(`thread-${index}`));

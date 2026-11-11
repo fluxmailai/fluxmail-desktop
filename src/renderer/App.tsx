@@ -86,6 +86,10 @@ export function App() {
   const quickReplyDirty = useRef(false);
   const latestUndo = useRef<{ token: string; targetKeys: Set<string> } | undefined>(undefined);
   const modifySequence = useRef(0);
+  // Conversations opened unread that the server has not been asked to mark read yet.
+  const pendingReads = useRef(new Map<string, { thread: ThreadSummary; send(): void }>());
+  // The open conversation once the reading pane has loaded it.
+  const loadedThread = useRef<string | undefined>(undefined);
   const loadedThreadCount = useRef(DEFAULT_PAGE_SIZE);
   const mailboxContext = JSON.stringify([accountId, label, submittedSearch, view]);
   const mailboxContextRef = useRef(mailboxContext);
@@ -201,7 +205,11 @@ export function App() {
 
   const loadBootstrap = useCallback(async () => {
     try {
-      const state = await window.fluxmail.bootstrap();
+      let state = await window.fluxmail.bootstrap();
+      // The server still counts a conversation that is waiting to be marked read.
+      for (const { thread } of pendingReads.current.values())
+        if (thread.folderRoles.includes("inbox"))
+          state = adjustUnreadCount(state, thread.accountId, -1);
       setBootstrap(state);
       setAccountId((current) => reconcileAccountSelection(current, state.accounts));
     } catch (caught) {
@@ -276,7 +284,10 @@ export function App() {
           setThreads((current) => {
             if (request !== listRequest.current || mailboxContext !== mailboxContextRef.current)
               return current;
-            const next = append ? mergeThreads(current, page.items, sortOrder) : page.items;
+            const next = withPendingReads(
+              append ? mergeThreads(current, page.items, sortOrder) : page.items,
+              pendingReads.current,
+            );
             loadedThreadCount.current = Math.max(DEFAULT_PAGE_SIZE, next.length);
             return next;
           });
@@ -286,8 +297,10 @@ export function App() {
               mailboxContext !== mailboxContextRef.current ||
               !current
                 ? current
-                : (page.items.find((thread) => threadKey(thread) === threadKey(current)) ??
-                  (options?.preserveSelection ? current : undefined)),
+                : (withPendingReads(
+                    page.items.filter((thread) => threadKey(thread) === threadKey(current)),
+                    pendingReads.current,
+                  )[0] ?? (options?.preserveSelection ? current : undefined)),
             );
           setCursor((current) =>
             request === listRequest.current && mailboxContext === mailboxContextRef.current
@@ -608,42 +621,54 @@ export function App() {
 
   const markThreadRead = useCallback(
     async (thread: ThreadSummary) => {
+      const key = threadKey(thread);
+      if (pendingReads.current.has(key)) return;
       invalidateThreadLoads();
       setThreads((current) =>
         current.map((candidate) =>
-          threadKey(candidate) === threadKey(thread) ? { ...candidate, unread: false } : candidate,
+          threadKey(candidate) === key ? { ...candidate, unread: false } : candidate,
         ),
       );
       setSelectedThread((current) =>
-        current && threadKey(current) === threadKey(thread)
-          ? { ...current, unread: false }
-          : current,
+        current && threadKey(current) === key ? { ...current, unread: false } : current,
       );
       if (thread.folderRoles.includes("inbox")) {
         setBootstrap((current) =>
           current ? adjustUnreadCount(current, thread.accountId, -1) : current,
         );
       }
-      if (latestUndo.current?.targetKeys.has(threadKey(thread))) {
-        latestUndo.current = undefined;
-        dismissActionNotice();
-      }
-      try {
-        await window.fluxmail.mail.modify({
-          targets: [{ accountId: thread.accountId, threadId: thread.id }],
-          action: { type: "markRead" },
-          undoable: false,
+      // The server hears about it once the reading pane has loaded the conversation, so the pane
+      // can still tell which messages were unread, or sooner if the user acts on it first.
+      const marked = new Promise<unknown>((resolve) => {
+        pendingReads.current.set(key, {
+          thread,
+          send: () => {
+            pendingReads.current.delete(key);
+            if (latestUndo.current?.targetKeys.has(key)) {
+              latestUndo.current = undefined;
+              dismissActionNotice();
+            }
+            resolve(
+              window.fluxmail.mail.modify({
+                targets: [{ accountId: thread.accountId, threadId: thread.id }],
+                action: { type: "markRead" },
+                undoable: false,
+              }),
+            );
+          },
         });
+      });
+      if (loadedThread.current === key) pendingReads.current.get(key)?.send();
+      try {
+        await marked;
       } catch (caught) {
         setThreads((current) =>
           current.map((candidate) =>
-            threadKey(candidate) === threadKey(thread) ? { ...candidate, unread: true } : candidate,
+            threadKey(candidate) === key ? { ...candidate, unread: true } : candidate,
           ),
         );
         setSelectedThread((current) =>
-          current && threadKey(current) === threadKey(thread)
-            ? { ...current, unread: true }
-            : current,
+          current && threadKey(current) === key ? { ...current, unread: true } : current,
         );
         if (thread.folderRoles.includes("inbox")) {
           setBootstrap((current) =>
@@ -656,9 +681,16 @@ export function App() {
     [dismissActionNotice, invalidateThreadLoads, showError],
   );
 
+  const handleThreadLoaded = useCallback((thread: ThreadSummary) => {
+    const key = threadKey(thread);
+    loadedThread.current = key;
+    pendingReads.current.get(key)?.send();
+  }, []);
+
   const activateThread = useCallback(
     (thread: ThreadSummary) => {
       selectedThreadRef.current = thread;
+      loadedThread.current = undefined;
       setSelectedThread(thread);
       if (!thread.unread) return;
       void markThreadRead(thread);
@@ -674,6 +706,9 @@ export function App() {
         if (!window.confirm(permanentDeletePrompt(targets.length))) return;
       }
       const targetKeys = new Set(targets.map(threadKey));
+      // Mark a conversation that is still opening read first, so this action lands after it, as
+      // it would have once the conversation loaded.
+      for (const key of targetKeys) pendingReads.current.get(key)?.send();
       const optimisticRemoval = shouldOptimisticallyRemoveFromView(
         submittedSearch ? "search" : view,
         action,
@@ -723,6 +758,7 @@ export function App() {
         });
         if (shouldAdvanceAfterArchive) {
           selectedThreadRef.current = nextThread;
+          loadedThread.current = undefined;
           setSelectedThread(nextThread);
         } else {
           setSelectedThread((current) =>
@@ -1113,6 +1149,7 @@ export function App() {
         undoSendDelaySeconds={bootstrap.preferences.undoSendDelaySeconds}
         quickReplyDiscardVersion={quickReplyDiscardVersion}
         onDraftMissing={handleDraftMissing}
+        onThreadLoaded={handleThreadLoaded}
         onDraftFinished={handleDraftFinished}
       />
       {composeSeed ? (
@@ -1281,6 +1318,17 @@ export function threadsToPrefetch(
   return nearby
     .filter((thread) => threadKey(thread) !== selectedKey)
     .map((thread) => ({ accountId: thread.accountId, threadId: thread.id }));
+}
+
+/** Shows conversations still waiting to be marked read on the server as read. */
+export function withPendingReads(
+  threads: ThreadSummary[],
+  pendingReads: ReadonlyMap<string, unknown>,
+): ThreadSummary[] {
+  if (!pendingReads.size) return threads;
+  return threads.map((thread) =>
+    thread.unread && pendingReads.has(threadKey(thread)) ? { ...thread, unread: false } : thread,
+  );
 }
 
 export function threadKey(

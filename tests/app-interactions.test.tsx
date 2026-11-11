@@ -13,6 +13,8 @@ import type {
 
 const closeDraft = vi.hoisted(() => vi.fn<() => boolean | Promise<boolean>>(() => true));
 const openFind = vi.hoisted(() => vi.fn());
+// Holds the mock reading pane's conversation loads until a test finishes them.
+const readingPaneLoads = vi.hoisted(() => ({ hold: false }));
 const composeDeliverySequence = vi.hoisted(() => ({ current: 0 }));
 
 vi.mock("../src/renderer/components/Sidebar", () => ({
@@ -103,15 +105,21 @@ vi.mock("../src/renderer/components/ReadingPane", async () => {
         onModify,
         onDraftFinished,
         onQuickReplyDirtyChange,
+        onThreadLoaded,
       }: {
         thread?: ThreadSummary;
-        onModify(action: { type: "star" | "unstar" }): Promise<void>;
+        onThreadLoaded?(thread: ThreadSummary): void;
+        onModify(action: { type: "star" | "unstar" | "markUnread" }): Promise<void>;
         onDraftFinished?(): void;
         onQuickReplyDirtyChange(dirty: boolean): void;
       },
       ref,
     ) {
       const [composerMode, setComposerMode] = React.useState<string>();
+      React.useEffect(() => {
+        if (thread && !readingPaneLoads.hold) onThreadLoaded?.(thread);
+        // The real pane loads a conversation when its identity changes.
+      }, [thread?.accountId, thread?.id]);
       React.useImperativeHandle(ref, () => ({
         openComposer: setComposerMode,
         openFind,
@@ -127,7 +135,11 @@ vi.mock("../src/renderer/components/ReadingPane", async () => {
               <button onClick={() => void onModify({ type: thread.starred ? "unstar" : "star" })}>
                 {thread.starred ? "Unstar conversation" : "Star conversation"}
               </button>
+              <button onClick={() => void onModify({ type: "markUnread" })}>
+                Mark conversation unread
+              </button>
               <button onClick={onDraftFinished}>Finish draft</button>
+              <button onClick={() => onThreadLoaded?.(thread)}>Finish loading</button>
             </>
           ) : null}
         </section>
@@ -210,6 +222,7 @@ beforeEach(() => {
   closeDraft.mockReset();
   closeDraft.mockReturnValue(true);
   openFind.mockReset();
+  readingPaneLoads.hold = false;
   composeDeliverySequence.current = 0;
 });
 
@@ -993,6 +1006,52 @@ describe("App thread navigation", () => {
       }),
     );
     expect(screen.getByText(`Reading ${second.subject}`)).toBeTruthy();
+  });
+
+  it("marks an opened conversation read once the reading pane loads it", async () => {
+    const unread = { ...thread("thread-1", "Unread conversation", false), unread: true };
+    installApi(
+      [unread],
+      vi.fn(async () => mailThread(unread)),
+    );
+    installMatchMedia();
+    readingPaneLoads.hold = true;
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: unread.subject }));
+
+    expect(window.fluxmail.mail.modify).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Finish loading" }));
+    fireEvent.click(screen.getByRole("button", { name: "Finish loading" }));
+
+    expect(window.fluxmail.mail.modify).toHaveBeenCalledTimes(1);
+    expect(window.fluxmail.mail.modify).toHaveBeenCalledWith({
+      targets: [{ accountId: unread.accountId, threadId: unread.id }],
+      action: { type: "markRead" },
+      undoable: false,
+    });
+  });
+
+  it("marks a conversation that is still loading read before acting on it", async () => {
+    const unread = { ...thread("thread-1", "Unread conversation", false), unread: true };
+    installApi(
+      [unread],
+      vi.fn(async () => mailThread(unread)),
+    );
+    installMatchMedia();
+    readingPaneLoads.hold = true;
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: unread.subject }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark conversation unread" }));
+    await waitFor(() => expect(window.fluxmail.mail.modify).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole("button", { name: "Finish loading" }));
+
+    const target = { accountId: unread.accountId, threadId: unread.id };
+    expect(vi.mocked(window.fluxmail.mail.modify).mock.calls).toEqual([
+      [{ targets: [target], action: { type: "markRead" }, undoable: false }],
+      [{ targets: [target], action: { type: "markUnread" } }],
+    ]);
   });
 
   it("does not advance when archiving in All Mail", async () => {
