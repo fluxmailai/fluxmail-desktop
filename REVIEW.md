@@ -15,7 +15,6 @@ Otherwise, use `xhigh` when any changed file is in one of these paths:
 - Accounts, stored data and licensing: `src/main/oauth.ts`, `vite.main.config.ts`, `src/main/cache.ts`, `src/main/cache-cipher.ts`, `src/main/preferences.ts`, `src/main/fluxmail-runtime.ts`
 - Website services and telemetry: `src/main/image-relay.ts`, `src/shared/image-relay.ts`, `src/main/analytics.ts`
 - Updates, release and packaging: `src/main/updater.ts`, `.github/`, `.agents/skills/release/`, `forge.config.ts`, `build/entitlements.mac.plist`, `scripts/update-manifests.mjs`, `scripts/release-notes.mjs`, `scripts/generate-third-party-notices.mjs`, `package.json`, `pnpm-workspace.yaml`, `CHANGELOG.md`
-- The review process: `REVIEW.md`, `AGENTS.md`, `CLAUDE.md`, `.claude/agents/`, `.claude/hooks/`, `.claude/settings.json`
 
 Also use `xhigh` when the branch adds and deletes more than 1,000 lines of text in total. Don't count binary files or the files listed under Skip.
 
