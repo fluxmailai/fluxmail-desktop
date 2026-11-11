@@ -2,17 +2,24 @@
 
 Fluxmail Desktop records user-facing changes in this file. The format follows [Common Changelog](https://common-changelog.org/).
 
-## [Unreleased](https://github.com/fluxmailai/fluxmail-desktop/compare/v0.8.0...HEAD)
+## [Unreleased](https://github.com/fluxmailai/fluxmail-desktop/compare/v0.9.0...HEAD)
+
+## [0.9.0](https://github.com/fluxmailai/fluxmail-desktop/releases/tag/v0.9.0) - 2026-11-11
+
+_These artifacts use Fluxmail's self-signed certificate and have not been notarized by Apple, so macOS will require approval before opening the app._
 
 ### Added
 
-- Download new versions in the background and show Restart to update in the sidebar, so later updates no longer need a manual install and macOS approval
+- Download future updates in the background after you manually install 0.9.0 in Applications, then click **Restart to update** in the sidebar when an update is ready ([#86](https://github.com/fluxmailai/fluxmail-desktop/pull/86))
+- Right-click a conversation to reply, forward, or manage it from the list, and right-click a selection to act on multiple conversations ([#110](https://github.com/fluxmailai/fluxmail-desktop/pull/110))
 
 ### Fixed
 
-- Ask you to update Fluxmail, instead of showing a general error, when your data comes from a newer version
-- Quit and restart properly from the startup error screen
-- Stop the macOS Keychain password prompt when opening an email after an update
+- Show **Update Fluxmail to continue** when your data comes from a newer version ([#88](https://github.com/fluxmailai/fluxmail-desktop/pull/88))
+- Quit and restart properly from the startup error screen ([#88](https://github.com/fluxmailai/fluxmail-desktop/pull/88))
+- Stop the remaining macOS Keychain password prompt when you open email after an update ([#85](https://github.com/fluxmailai/fluxmail-desktop/pull/85))
+- Update the unread count as soon as you mark a conversation read or unread ([#108](https://github.com/fluxmailai/fluxmail-desktop/pull/108))
+- Keep the refresh icon spinning while the open mailbox syncs ([#105](https://github.com/fluxmailai/fluxmail-desktop/pull/105))
 
 ## [0.8.0](https://github.com/fluxmailai/fluxmail-desktop/releases/tag/v0.8.0) - 2026-11-01
 
