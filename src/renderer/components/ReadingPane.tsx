@@ -89,6 +89,8 @@ interface Props {
   quickReplyDiscardVersion?: number;
   onDraftMissing?(thread: ThreadSummary): void;
   onDraftFinished?(): void;
+  /** Called when a load of the conversation finishes, whether or not it succeeded. */
+  onThreadLoaded?(thread: ThreadSummary): void;
 }
 
 export type InlineComposerMode = "reply" | "replyAll" | "forward";
@@ -110,6 +112,26 @@ interface InlineComposerState {
 }
 
 const OPENED_THREAD_CACHE_SIZE = 30;
+const NO_MESSAGE_IDS: ReadonlySet<string> = new Set();
+const NO_EXPANDED_OVERRIDES: ReadonlyMap<string, boolean> = new Map();
+
+function paintedContent(thread: MailThread): string {
+  return JSON.stringify({
+    ...thread,
+    messages: thread.messages.map((message) => ({
+      ...message,
+      flags: { ...message.flags, read: true },
+    })),
+  });
+}
+
+function withUnreadMessageIds(
+  current: ReadonlySet<string>,
+  messages: readonly MailMessage[],
+): ReadonlySet<string> {
+  const added = messages.filter((message) => !message.flags.read && !current.has(message.id));
+  return added.length ? new Set([...current, ...added.map((message) => message.id)]) : current;
+}
 const MESSAGE_DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
@@ -133,6 +155,7 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
     quickReplyDiscardVersion,
     onDraftMissing,
     onDraftFinished,
+    onThreadLoaded,
   },
   ref,
 ) {
@@ -159,6 +182,16 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
   const findInputRef = useRef<HTMLInputElement>(null);
   // Recently opened conversations, so switching back to one paints without a loading state.
   const openedThreads = useRef(new Map<string, { version: string; detail: MailThread }>());
+  // Messages a fresh load of the open conversation reported as unread. They open expanded, as
+  // does the newest message, and stay that way after the conversation is marked read.
+  const [unreadMessageIds, setUnreadMessageIds] = useState<ReadonlySet<string>>(NO_MESSAGE_IDS);
+  // Messages the user expanded or collapsed in the open conversation.
+  const [expandedOverrides, setExpandedOverrides] =
+    useState<ReadonlyMap<string, boolean>>(NO_EXPANDED_OVERRIDES);
+  // The conversation the expanded messages belong to, so reloading it keeps the reader's place.
+  const expansionThread = useRef<string | undefined>(undefined);
+  const onThreadLoadedRef = useRef(onThreadLoaded);
+  onThreadLoadedRef.current = onThreadLoaded;
   composerRef.current = composer;
   draftSeedRef.current = draftSeed;
   const threadIdentity = thread ? `${thread.accountId}:${thread.id}` : "";
@@ -201,6 +234,10 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
     setFindMatchCounts((current) =>
       current[messageId] === count ? current : { ...current, [messageId]: count },
     );
+  }, []);
+
+  const handleExpandedChange = useCallback((messageId: string, expanded: boolean) => {
+    setExpandedOverrides((current) => new Map(current).set(messageId, expanded));
   }, []);
 
   useEffect(() => {
@@ -311,6 +348,12 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
       pendingComposer.current = undefined;
     closeFind();
     setDetail(undefined);
+    const identity = thread ? `${thread.accountId}:${thread.id}` : undefined;
+    if (identity !== expansionThread.current) {
+      expansionThread.current = identity;
+      setUnreadMessageIds(NO_MESSAGE_IDS);
+      setExpandedOverrides(NO_EXPANDED_OVERRIDES);
+    }
     detailKey.current = undefined;
     setDraftSeed(undefined);
     composerDirty.current = false;
@@ -333,15 +376,20 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
     setLoading(!showOpened);
     void window.fluxmail.mail
       .getThread({ accountId: thread.accountId, threadId: thread.id })
+      .finally(() => onThreadLoadedRef.current?.(thread))
       .then(async (result) => {
         if (canceled) return;
         const cache = openedThreads.current;
         cache.delete(cacheKey);
         cache.set(cacheKey, { version, detail: result });
         if (cache.size > OPENED_THREAD_CACHE_SIZE) cache.delete(cache.keys().next().value!);
-        // Keep the painted conversation when nothing changed, so its message frames stay loaded.
-        if (!showOpened || JSON.stringify(opened.detail) !== JSON.stringify(result))
+        // Keep the painted conversation when nothing it shows changed, so its message frames stay
+        // loaded. Read state isn't shown, and a remembered conversation predates being marked read.
+        if (!showOpened || paintedContent(opened.detail) !== paintedContent(result))
           setDetail(result);
+        // Only a fresh load says which messages are unread, for the same reason. Messages unread
+        // in an earlier load of this conversation stay expanded.
+        setUnreadMessageIds((current) => withUnreadMessageIds(current, result.messages));
         detailKey.current = cacheKey;
         const draft = [...result.messages]
           .reverse()
@@ -447,6 +495,7 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
     0,
   );
   const replyTarget = [...messages].reverse().find((message) => !message.flags.draft);
+  const latestMessageId = messages.at(-1)?.id;
   const replyAllAvailable = Boolean(
     replyTarget && shouldOfferReplyAll(detail.accountEmail, replyTarget),
   );
@@ -610,6 +659,11 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
                 // The first message's quote may be the only copy of what someone was added to
                 // the conversation to read.
                 collapseQuotedHistory={index > 0}
+                expanded={
+                  expandedOverrides.get(message.id) ??
+                  (message.id === latestMessageId || unreadMessageIds.has(message.id))
+                }
+                onExpandedChange={handleExpandedChange}
                 blockRemoteImages={blockRemoteImages}
                 imageRelay={imageRelay}
                 imageRelayAvailable={imageRelayAvailable}
@@ -710,6 +764,8 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
 const MessageCard = memo(function MessageCard({
   message,
   collapseQuotedHistory,
+  expanded,
+  onExpandedChange,
   blockRemoteImages,
   imageRelay,
   imageRelayAvailable,
@@ -721,6 +777,8 @@ const MessageCard = memo(function MessageCard({
 }: {
   message: MailMessage;
   collapseQuotedHistory: boolean;
+  expanded: boolean;
+  onExpandedChange(messageId: string, expanded: boolean): void;
   blockRemoteImages: boolean;
   imageRelay: boolean;
   imageRelayAvailable: boolean;
@@ -730,7 +788,6 @@ const MessageCard = memo(function MessageCard({
   onError(message: string): void;
   onMailto?(mailto: MailtoFields): void;
 }) {
-  const [expanded, setExpanded] = useState(true);
   const handleFindMatchCountChange = useCallback(
     (count: number) => onFindMatchCountChange(message.id, count),
     [message.id, onFindMatchCountChange],
@@ -741,7 +798,7 @@ const MessageCard = memo(function MessageCard({
     message.from?.email && message.from.email !== senderName ? message.from.email : undefined;
   const contentExpanded = expanded || Boolean(findQuery);
   const toggleExpanded = () => {
-    if (!findQuery) setExpanded((value) => !value);
+    if (!findQuery) onExpandedChange(message.id, !expanded);
   };
   return (
     <article className="message-card">
