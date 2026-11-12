@@ -645,7 +645,7 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
               </div>
             ) : null}
           </div>
-          {messages.map((message) => {
+          {messages.map((message, index) => {
             const matchCount = findMatchCounts[message.id] ?? 0;
             const localActiveFindMatch =
               activeFindMatch >= findMatchOffset && activeFindMatch < findMatchOffset + matchCount
@@ -656,6 +656,9 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
               <MessageCard
                 key={message.id}
                 message={message}
+                // The first message's quote may be the only copy of what someone was added to
+                // the conversation to read.
+                collapseQuotedHistory={index > 0}
                 expanded={
                   expandedOverrides.get(message.id) ??
                   (message.id === latestMessageId || unreadMessageIds.has(message.id))
@@ -760,6 +763,7 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
 
 const MessageCard = memo(function MessageCard({
   message,
+  collapseQuotedHistory,
   expanded,
   onExpandedChange,
   blockRemoteImages,
@@ -772,6 +776,7 @@ const MessageCard = memo(function MessageCard({
   onMailto,
 }: {
   message: MailMessage;
+  collapseQuotedHistory: boolean;
   expanded: boolean;
   onExpandedChange(messageId: string, expanded: boolean): void;
   blockRemoteImages: boolean;
@@ -851,6 +856,7 @@ const MessageCard = memo(function MessageCard({
             onError={onError}
             onMailto={onMailto}
             onTrackingPixelsChange={setTrackingPixels}
+            collapseQuotedHistory={collapseQuotedHistory}
           />
           {message.attachments?.length ? (
             <div className="attachment-list">

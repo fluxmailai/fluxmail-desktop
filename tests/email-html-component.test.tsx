@@ -207,6 +207,135 @@ describe("EmailHtml links", () => {
   });
 });
 
+describe("EmailHtml quoted history", () => {
+  const reply = {
+    html: '<p>Thursday works.</p><div class="gmail_quote"><div class="gmail_attr">On Tue, Nov 10, 2026, Maya wrote:</div><blockquote>Can we move it?</blockquote></div>',
+  };
+
+  function Collapsing(props: Parameters<typeof EmailHtml>[0]) {
+    return <EmailHtml collapseQuotedHistory {...props} />;
+  }
+
+  function loadFrame(container: HTMLElement): Document {
+    const frame = container.querySelector("iframe")!;
+    frame.contentDocument!.body.innerHTML = frameDocument(container).body.innerHTML;
+    fireEvent.load(frame);
+    return frame.contentDocument!;
+  }
+
+  it("collapses the quote until it is shown, then keeps it open", () => {
+    installApi(vi.fn(async () => ({})));
+    const { container } = render(<Collapsing message={{ ...message("reply"), body: reply }} />);
+    const document = loadFrame(container);
+    const root = document.getElementById("email-root")!;
+    expect(frameSource(container)).toContain(
+      "#email-root:not([data-fluxmail-show-quoted]) [data-fluxmail-quoted]{display:none!important}",
+    );
+    expect(document.querySelector(".gmail_quote")!.hasAttribute("data-fluxmail-quoted")).toBe(true);
+    expect(root.hasAttribute("data-fluxmail-show-quoted")).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Show quoted text" }));
+    expect(root.hasAttribute("data-fluxmail-show-quoted")).toBe(true);
+    expect(screen.queryByRole("button", { name: /quoted text/ })).toBeNull();
+    expect(window.document.activeElement).toBe(container.querySelector("iframe"));
+  });
+
+  it("collapses the quote again for another message", () => {
+    installApi(vi.fn(async () => ({})));
+    const { rerender } = render(<Collapsing message={{ ...message("reply"), body: reply }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Show quoted text" }));
+
+    rerender(<Collapsing message={{ ...message("reply-2"), body: reply }} />);
+    expect(screen.getByRole("button", { name: "Show quoted text" })).toBeTruthy();
+  });
+
+  it("shows the quote while finding in the conversation", () => {
+    installApi(vi.fn(async () => ({})));
+    const { container, rerender } = render(
+      <Collapsing message={{ ...message("reply"), body: reply }} />,
+    );
+    const root = loadFrame(container).getElementById("email-root")!;
+
+    rerender(<Collapsing message={{ ...message("reply"), body: reply }} findQuery="works" />);
+    expect(root.hasAttribute("data-fluxmail-show-quoted")).toBe(true);
+    expect(screen.queryByRole("button", { name: /quoted text/ })).toBeNull();
+
+    rerender(<Collapsing message={{ ...message("reply"), body: reply }} />);
+    expect(root.hasAttribute("data-fluxmail-show-quoted")).toBe(false);
+    expect(screen.getByRole("button", { name: "Show quoted text" })).toBeTruthy();
+  });
+
+  it("keeps a quote open after find steps to a match inside it", () => {
+    installApi(vi.fn(async () => ({})));
+    const { container, rerender } = render(
+      <Collapsing message={{ ...message("reply"), body: reply }} />,
+    );
+    const root = loadFrame(container).getElementById("email-root")!;
+
+    rerender(
+      <Collapsing
+        message={{ ...message("reply"), body: reply }}
+        findQuery="move"
+        activeFindMatch={0}
+      />,
+    );
+    rerender(<Collapsing message={{ ...message("reply"), body: reply }} />);
+
+    expect(root.hasAttribute("data-fluxmail-show-quoted")).toBe(true);
+    expect(screen.queryByRole("button", { name: /quoted text/ })).toBeNull();
+  });
+
+  it("collapses the quote in a plain-text reply", () => {
+    installApi(vi.fn(async () => ({})));
+    const { container } = render(
+      <Collapsing
+        message={{
+          ...message("plain"),
+          body: { text: "Booked.\n\nOn Tue, Nov 10, 2026, Sam wrote:\n> Sounds good.\n\nSam" },
+        }}
+      />,
+    );
+    const document = frameDocument(container);
+    expect(document.querySelector("[data-fluxmail-quoted]")?.textContent).toBe(
+      "\nOn Tue, Nov 10, 2026, Sam wrote:\n> Sounds good.",
+    );
+    expect(document.getElementById("email-root")!.lastElementChild!.textContent).toBe("\nSam");
+    expect(screen.getByRole("button", { name: "Show quoted text" })).toBeTruthy();
+  });
+
+  it("starts a bottom-posted plain-text reply with the answer", () => {
+    installApi(vi.fn(async () => ({})));
+    const { container } = render(
+      <Collapsing
+        message={{
+          ...message("plain"),
+          body: { text: "On Tue, Nov 10, 2026 Sam wrote:\n> Does Thursday work?\n\nYes." },
+        }}
+      />,
+    );
+    const root = frameDocument(container).getElementById("email-root")!;
+    expect(root.children).toHaveLength(2);
+    expect(root.lastElementChild!.textContent).toBe("Yes.");
+  });
+
+  it("leaves forwarded messages, messages without a quote, and previews open", () => {
+    installApi(vi.fn(async () => ({})));
+    const { container, rerender } = render(
+      <Collapsing message={{ ...message("Fwd: Plans"), body: reply }} />,
+    );
+    expect(frameSource(container)).not.toContain("data-fluxmail-quoted=");
+    expect(screen.queryByRole("button", { name: "Show quoted text" })).toBeNull();
+
+    rerender(<Collapsing message={{ ...message("plain"), body: { text: "Just a note." } }} />);
+    expect(screen.queryByRole("button", { name: "Show quoted text" })).toBeNull();
+
+    // The composer previews the message being answered in full.
+    rerender(<EmailHtml message={{ ...message("reply"), body: reply }} />);
+    expect(frameSource(container)).not.toContain("data-fluxmail-quoted=");
+    expect(screen.queryByRole("button", { name: "Show quoted text" })).toBeNull();
+  });
+});
+
 function installApi(proxy: FluxmailDesktopApi["images"]["proxy"]): void {
   Object.defineProperty(window, "fluxmail", {
     configurable: true,

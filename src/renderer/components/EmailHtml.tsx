@@ -1,16 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DOMPurify from "dompurify";
-import { Image as ImageIcon } from "lucide-react";
+import { Ellipsis, Image as ImageIcon } from "lucide-react";
 import { MAX_IMAGE_RELAY_URLS_PER_REQUEST, type MailMessage } from "../../shared/contracts";
 import { parseExternalUrl } from "../../shared/external-url";
 import { parseMailtoUrl, type MailtoFields } from "../../shared/mailto";
 import { convertEmailToDarkMode, removeSenderDarkModeCSS } from "../email/convert-to-dark-mode";
+import {
+  clearQuotedHistoryMarkers,
+  isForwardedSubject,
+  isReplySubject,
+  markQuotedHistory,
+  PLAIN_TEXT_QUOTE_CLASS,
+  QUOTED_HISTORY_ATTRIBUTE,
+  splitQuotedText,
+} from "../email/quoted-reply";
 import { collectRemoteImageUrls, rewriteRemoteImageUrls } from "../email/remote-images";
 import { blockTrackingPixels, type TrackingPixelDetail } from "../email/tracking-pixels";
+import { IconButton } from "./Controls";
 
 const EMPTY_IMAGE_URLS: Record<string, string> = {};
 const EMAIL_SOURCE_ATTRIBUTE = "data-fluxmail-source";
 const FIXED_WIDTH_IMAGE_ATTRIBUTE = "data-fluxmail-fixed-width";
+const SHOW_QUOTED_ATTRIBUTE = "data-fluxmail-show-quoted";
 
 export function EmailHtml({
   message,
@@ -23,6 +34,7 @@ export function EmailHtml({
   onMailto,
   onFindMatchCountChange,
   onTrackingPixelsChange,
+  collapseQuotedHistory = false,
 }: {
   message: MailMessage;
   blockRemoteImages?: boolean;
@@ -35,6 +47,8 @@ export function EmailHtml({
   onMailto?(mailto: MailtoFields): void;
   onFindMatchCountChange?(count: number): void;
   onTrackingPixelsChange?(trackingPixels: TrackingPixelDetail[]): void;
+  /** Hides the quoted history of a received message behind a button. */
+  collapseQuotedHistory?: boolean;
 }) {
   const [remoteImages, setRemoteImages] = useState<{
     policyKey: string;
@@ -55,7 +69,21 @@ export function EmailHtml({
   const scheduleResizeRef = useRef<(() => void) | undefined>(undefined);
   const frameCleanupRef = useRef<(() => void) | undefined>(undefined);
   const darkMode = useResolvedDarkTheme();
-  const rawHtml = message.body?.html || textToHtml(message.body?.text || "");
+  // A forwarded message is what the sender wants read, so its quote stays open.
+  const collapseQuotes = collapseQuotedHistory && !isForwardedSubject(message.subject);
+  const reply = isReplySubject(message.subject);
+  const bodyHtml = message.body?.html;
+  const bodyText = message.body?.text;
+  const rawHtml = useMemo(
+    () => bodyHtml || textToHtml(bodyText || "", collapseQuotes ? { reply } : undefined),
+    [bodyHtml, bodyText, collapseQuotes, reply],
+  );
+  const [openQuoteMessageId, setOpenQuoteMessageId] = useState<string>();
+  const quotedHistoryOpen = openQuoteMessageId === message.id;
+  // Find in the conversation searches the whole message, so it opens the quote while active.
+  const showQuotedHistory = quotedHistoryOpen || Boolean(findQuery);
+  const showQuotedHistoryRef = useRef(showQuotedHistory);
+  showQuotedHistoryRef.current = showQuotedHistory;
   const policyKey = remoteImagePolicyKey(
     message.id,
     blockRemoteImages,
@@ -95,13 +123,17 @@ export function EmailHtml({
     frameCleanupRef.current?.();
     attachedDocumentRef.current = document;
     setFrameVersion((current) => current + 1);
+    setQuotedHistoryVisibility(document, showQuotedHistoryRef.current);
     const resize = () => {
       const scale = applyContentScaling(document, frame.clientWidth);
       const root = document.getElementById("email-root");
       const contentHeight = root
         ? Math.max(root.scrollHeight, root.offsetHeight) * scale
         : Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-      const nextHeight = Math.max(80, Math.ceil(contentHeight));
+      // Short messages keep some room, except above the quoted-history toggle, which belongs
+      // right under the reply.
+      const minimumHeight = document.querySelector(`[${QUOTED_HISTORY_ATTRIBUTE}]`) ? 24 : 80;
+      const nextHeight = Math.max(minimumHeight, Math.ceil(contentHeight));
       setHeight((current) => (current === nextHeight ? current : nextHeight));
     };
     resize();
@@ -257,8 +289,8 @@ export function EmailHtml({
     void loadRemoteImages();
   }, [blockRemoteImages, imageRelay, imageRelayAvailable, loadRemoteImages, policyKey]);
   const rendered = useMemo(
-    () => buildEmailContent(rawHtml, cidUrls, loadImages, darkMode, relayUrls),
-    [cidUrls, darkMode, loadImages, rawHtml, relayUrls],
+    () => buildEmailContent(rawHtml, cidUrls, loadImages, darkMode, relayUrls, collapseQuotes),
+    [cidUrls, collapseQuotes, darkMode, loadImages, rawHtml, relayUrls],
   );
   // Sanitizing and parsing the message is expensive, and the frame re-renders on every resize.
   const remoteImagesPresent = useMemo(
@@ -294,6 +326,14 @@ export function EmailHtml({
     return () => window.cancelAnimationFrame(pollFrame);
   }, [attachFrame, rendered.sourceId]);
 
+  // Runs before the find highlighting below, which skips text that is hidden.
+  useEffect(() => {
+    const document = iframeRef.current?.contentDocument;
+    if (!document) return;
+    setQuotedHistoryVisibility(document, showQuotedHistory);
+    scheduleResizeRef.current?.();
+  }, [frameVersion, rendered.source, showQuotedHistory]);
+
   useEffect(() => {
     const document = iframeRef.current?.contentDocument;
     if (!document) return;
@@ -307,8 +347,27 @@ export function EmailHtml({
     const document = frame?.contentDocument;
     if (!document) return;
     const active = activateEmailFindMatch(document, activeFindMatch);
-    if (frame && active) scrollEmailFindMatchIntoView(frame, active);
-  }, [activeFindMatch, findQuery, frameVersion, rendered.source]);
+    if (!frame || !active) return;
+    // A match the user stepped to stays readable once find closes.
+    if (active.closest(`[${QUOTED_HISTORY_ATTRIBUTE}]`)) setOpenQuoteMessageId(message.id);
+    let scrollFrame = 0;
+    const scroll = () => {
+      window.cancelAnimationFrame(scrollFrame);
+      scrollFrame = window.requestAnimationFrame(() => scrollEmailFindMatchIntoView(frame, active));
+    };
+    scroll();
+    // Find opens the quotes in every message, and the frames grow after that, so follow their
+    // size changes for a moment instead of scrolling to where the match was before they grew.
+    const observer = new ResizeObserver(scroll);
+    for (const other of frame.closest(".conversation-scroll")?.querySelectorAll("iframe") ?? [])
+      observer.observe(other);
+    const stopFollowing = window.setTimeout(() => observer.disconnect(), 1000);
+    return () => {
+      window.cancelAnimationFrame(scrollFrame);
+      window.clearTimeout(stopFollowing);
+      observer.disconnect();
+    };
+  }, [activeFindMatch, findQuery, frameVersion, message.id, rendered.source]);
 
   useEffect(
     () => () => {
@@ -345,6 +404,22 @@ export function EmailHtml({
           if (document) attachFrame(document);
         }}
       />
+      {rendered.hasQuotedHistory && !showQuotedHistory ? (
+        <div className="email-quoted-history">
+          <IconButton
+            label="Show quoted text"
+            className="quoted-reply-toggle"
+            tooltipSide="top"
+            onClick={() => {
+              setOpenQuoteMessageId(message.id);
+              // The button goes away, so keep keyboard focus in this message.
+              iframeRef.current?.focus({ preventScroll: true });
+            }}
+          >
+            <Ellipsis size={18} />
+          </IconButton>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -355,8 +430,10 @@ export function buildEmailDocument(
   loadImages: boolean,
   darkMode = false,
   relayUrls?: Record<string, string>,
+  collapseQuotedHistory = false,
 ): string {
-  return buildEmailContent(rawHtml, cidUrls, loadImages, darkMode, relayUrls).source;
+  return buildEmailContent(rawHtml, cidUrls, loadImages, darkMode, relayUrls, collapseQuotedHistory)
+    .source;
 }
 
 function buildEmailContent(
@@ -365,7 +442,13 @@ function buildEmailContent(
   loadImages: boolean,
   darkMode = false,
   relayUrls?: Record<string, string>,
-): { source: string; sourceId: string; trackingPixels: TrackingPixelDetail[] } {
+  collapseQuotedHistory = false,
+): {
+  source: string;
+  sourceId: string;
+  trackingPixels: TrackingPixelDetail[];
+  hasQuotedHistory: boolean;
+} {
   const clean = sanitizeEmailHtml(rawHtml);
   const themedHtml = darkMode
     ? convertEmailToDarkMode(clean, {
@@ -379,6 +462,9 @@ function buildEmailContent(
   const document = new DOMParser().parseFromString(themedHtml, "text/html");
   normalizePreformattedText(document);
   const trackingReport = blockTrackingPixels(document);
+  // Strip markers a sender wrote so the hiding rule below only applies to Fluxmail's own.
+  clearQuotedHistoryMarkers(document.body);
+  const hasQuotedHistory = collapseQuotedHistory && markQuotedHistory(document.body);
   for (const image of document.querySelectorAll("img")) {
     markFixedWidthTableImage(image);
     const source = image.getAttribute("src") || "";
@@ -426,7 +512,7 @@ function buildEmailContent(
   const senderStyles = [...document.head.querySelectorAll("style")]
     .map((style) => style.outerHTML)
     .join("");
-  const head = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${csp}"><meta name="referrer" content="no-referrer"><meta name="color-scheme" content="${darkMode ? "dark" : "light"}"><style>html,body{width:100%;min-width:0;height:auto!important;margin:0!important;padding:0!important;background:${palette.background};color:${palette.color};font:14px/1.6 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden!important;overflow-wrap:anywhere;box-sizing:border-box}#email-root{display:flow-root;width:100%;min-width:0;max-width:100%;box-sizing:border-box;transform-origin:top left;overflow-wrap:anywhere}#email-root>:first-child{margin-block-start:0!important}#email-root>:last-child{margin-block-end:0!important}a{color:${palette.link};cursor:pointer;overflow-wrap:anywhere;word-break:break-word}table{max-width:100%;overflow-wrap:break-word}td{overflow-wrap:break-word}img{border:0;max-width:100%!important;height:auto!important;object-fit:contain!important}img[${FIXED_WIDTH_IMAGE_ATTRIBUTE}]{max-width:100vw!important}blockquote{border-left:2px solid ${palette.quote};margin-left:4px;padding-left:12px;color:${palette.muted}}pre,pre code{max-width:100%;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere}mark[data-fluxmail-find-match]{border-radius:2px;padding:0;background:#f9d65c;color:#191919;box-shadow:0 0 0 1px rgb(132 91 0 / .16)}mark[data-fluxmail-find-match].active{background:#f39a3b;box-shadow:0 0 0 2px rgb(181 90 0 / .4)}</style>${senderStyles}</head>`;
+  const head = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${csp}"><meta name="referrer" content="no-referrer"><meta name="color-scheme" content="${darkMode ? "dark" : "light"}"><style>html,body{width:100%;min-width:0;height:auto!important;margin:0!important;padding:0!important;background:${palette.background};color:${palette.color};font:14px/1.6 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden!important;overflow-wrap:anywhere;box-sizing:border-box}#email-root{display:flow-root;width:100%;min-width:0;max-width:100%;box-sizing:border-box;transform-origin:top left;overflow-wrap:anywhere}#email-root>:first-child{margin-block-start:0!important}#email-root>:last-child{margin-block-end:0!important}a{color:${palette.link};cursor:pointer;overflow-wrap:anywhere;word-break:break-word}table{max-width:100%;overflow-wrap:break-word}td{overflow-wrap:break-word}img{border:0;max-width:100%!important;height:auto!important;object-fit:contain!important}img[${FIXED_WIDTH_IMAGE_ATTRIBUTE}]{max-width:100vw!important}blockquote{border-left:2px solid ${palette.quote};margin-left:4px;padding-left:12px;color:${palette.muted}}pre,pre code{max-width:100%;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere}mark[data-fluxmail-find-match]{border-radius:2px;padding:0;background:#f9d65c;color:#191919;box-shadow:0 0 0 1px rgb(132 91 0 / .16)}mark[data-fluxmail-find-match].active{background:#f39a3b;box-shadow:0 0 0 2px rgb(181 90 0 / .4)}#email-root:not([${SHOW_QUOTED_ATTRIBUTE}]) [${QUOTED_HISTORY_ATTRIBUTE}]{display:none!important}</style>${senderStyles}</head>`;
   const body = document.body.innerHTML;
   // Tag the root with a hash of the content so the component can tell this document apart from
   // the one it replaces while the frame is still navigating.
@@ -435,6 +521,7 @@ function buildEmailContent(
     source: `${head}<body><div id="email-root" ${EMAIL_SOURCE_ATTRIBUTE}="${sourceId}">${body}</div></body></html>`,
     sourceId,
     trackingPixels: trackingReport.trackingPixels,
+    hasQuotedHistory,
   };
 }
 
@@ -766,12 +853,32 @@ function normalizePreformattedText(document: Document): void {
   }
 }
 
-function textToHtml(value: string): string {
-  const escaped = value.replace(
+function setQuotedHistoryVisibility(document: Document, visible: boolean): void {
+  document.getElementById("email-root")?.toggleAttribute(SHOW_QUOTED_ATTRIBUTE, visible);
+}
+
+/** Converts a plain-text body, wrapping its quoted history when `quotes` asks for it. */
+function textToHtml(value: string, quotes?: { reply: boolean }): string {
+  const split = quotes && splitQuotedText(value, quotes);
+  if (!split) return preformatted(value);
+  // A line break between the parts keeps a blank line around the quote once it is open, without
+  // starting the message with an empty line while it is hidden.
+  return (
+    (split.body ? preformatted(split.body) : "") +
+    `<div class="${PLAIN_TEXT_QUOTE_CLASS}" style="white-space:pre-wrap">${split.body ? "\n" : ""}${escapeHtml(split.quoted)}${!split.body && split.after ? "\n" : ""}</div>` +
+    (split.after ? preformatted(split.body ? `\n${split.after}` : split.after) : "")
+  );
+}
+
+function preformatted(value: string): string {
+  return `<div style="white-space:pre-wrap">${escapeHtml(value)}</div>`;
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(
     /[&<>]/g,
     (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[character]!,
   );
-  return `<div style="white-space:pre-wrap">${escaped}</div>`;
 }
 
 function remoteImagePolicyKey(

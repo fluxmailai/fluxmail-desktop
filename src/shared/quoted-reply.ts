@@ -48,9 +48,18 @@ const QUOTED_TEXT_PATTERNS = [
   /(?:^|\n)On [^\n]+ wrote:\s*(?:\n|$)/i,
   /(?:^|\n)-{2,}\s*Original Message\s*-{2,}(?:\n|$)/i,
 ];
-const ATTRIBUTION_PATTERN = /(?:On\b[^\n]{0,300}\bwrote:|-{2,}\s*Original Message\s*-{2,})/i;
-const TRAILING_ATTRIBUTION_PATTERN = new RegExp(`(?:\\b${ATTRIBUTION_PATTERN.source})\\s*$`, "i");
-const WHOLE_ATTRIBUTION_PATTERN = new RegExp(`^${ATTRIBUTION_PATTERN.source}$`, "i");
+const ON_ATTRIBUTION = String.raw`On\b[^\n]{0,300}\bwrote:`;
+// The dashes are bounded so a long run of them can't make the unanchored search quadratic.
+const ORIGINAL_MESSAGE_SEPARATOR = String.raw`-{2,20}\s*Original Message\s*-{2,20}`;
+// Only the "On" form needs a word boundary; one in front of the dashes would need a letter there.
+const TRAILING_ATTRIBUTION_PATTERN = new RegExp(
+  `(?:\\b${ON_ATTRIBUTION}|${ORIGINAL_MESSAGE_SEPARATOR})\\s*$`,
+  "i",
+);
+const WHOLE_ATTRIBUTION_PATTERN = new RegExp(
+  `^(?:${ON_ATTRIBUTION}|${ORIGINAL_MESSAGE_SEPARATOR})$`,
+  "i",
+);
 
 export function quotedReplyCitation(original: Message): string {
   const sender = original.from?.name
@@ -74,9 +83,9 @@ export function collapseWhitespace(value: string): string {
   return value.replace(/\s+/g, " ");
 }
 
-/** True when text ends with the attribution line that introduces a quoted message. */
-export function endsWithQuoteAttribution(text: string): boolean {
-  return TRAILING_ATTRIBUTION_PATTERN.test(text.trimEnd());
+/** The attribution line that ends the text, when it ends with one. */
+export function trailingQuoteAttribution(text: string): string | undefined {
+  return TRAILING_ATTRIBUTION_PATTERN.exec(text.trimEnd())?.[0];
 }
 
 /** True when text is nothing but the attribution line that introduces a quoted message. */

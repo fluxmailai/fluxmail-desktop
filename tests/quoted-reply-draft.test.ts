@@ -148,3 +148,13 @@ describe("reopening a saved reply", () => {
     expect(kept.map((attachment) => attachment.token)).toEqual(["my-image", "file"]);
   });
 });
+
+describe("replyWithoutQuotedHtml separators", () => {
+  it("drops a blockquote introduced by an Original Message separator", () => {
+    expect(
+      replyWithoutQuotedHtml(
+        "<p>Reply</p><p>-----Original Message-----</p><blockquote>Earlier</blockquote>",
+      ),
+    ).toEqual({ html: "<p>Reply</p>", quoted: true });
+  });
+});
