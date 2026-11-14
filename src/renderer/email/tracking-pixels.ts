@@ -1,3 +1,5 @@
+import { findCssUrls, replaceCssUrls } from "./css-urls";
+
 export interface TrackingPixelReport {
   totalImages: number;
   blockedCount: number;
@@ -12,7 +14,7 @@ export interface TrackingPixelDetail {
 }
 
 export const TRACKING_RULESET_METADATA = {
-  version: "2026-07-18.1",
+  version: "2026-11-14.1",
   auditedAt: "2026-07-18",
   sources: [
     "https://github.com/AdguardTeam/AdguardFilters/tree/master/MailTrackingFilter",
@@ -101,19 +103,42 @@ const TRACKING_HOST_PATTERNS = [
   /^t\.strk\d{2}\.email$/i,
 ];
 
-const EMAIL_TRACKING_PATTERNS = [
+// Image URLs in email are untrusted and unbounded, so every pattern must run in linear time. A
+// pattern is a regular expression or a function. `inOrder(a, b)` replaces `a.*b`, which
+// backtracks over the rest of the URL from every match of `a`: a crafted 23 KB URL made one check
+// take seconds. Two hand-written functions replace expressions that backtracked from every
+// occurrence of their prefix. EMAIL_TRACKING_PATTERNS receive the lowercased URL.
+type TrackingPattern = RegExp | ((value: string) => boolean);
+
+// Matches when each expression matches after the end of the previous one's first match, which is
+// what `a.*b.*c` matches when every part but the last is a fixed string, as in every use below.
+function inOrder(...parts: RegExp[]): (value: string) => boolean {
+  const globalParts = parts.map((part) => new RegExp(part.source, `${part.flags}g`));
+  return (value) => {
+    let position = 0;
+    for (const part of globalParts) {
+      part.lastIndex = position;
+      const match = part.exec(value);
+      if (!match) return false;
+      position = match.index + match[0].length;
+    }
+    return true;
+  };
+}
+
+const EMAIL_TRACKING_PATTERNS: TrackingPattern[] = [
   /\/track\/open\.php\?u=/i,
   /\/wf\/open\?upn=/i,
   /dripemail2/i,
   /icptrack\.com\/icp\/track/i,
   /mkt4477\.com\/open/i,
   /strongview\.com\/t\//i,
-  /\/e\/o\/(?:[0-9a-z+/]{4})+(?:(?:[0-9a-z+/]{2}==)|(?:[0-9a-z+/]{3}=))?(?:[/?#]|$)/i,
+  hasBase64OpenPath,
   /mixmax\.com\/api\/track\//i,
   /mixmax\.com\/e\/o/i,
-  /\/\/tracking.*\/api\/track\/v2\//i,
+  inOrder(/\/\/tracking/i, /\/api\/track\/v2\//i),
   /contactmonkey\.com\/api\/v1\/tracker/i,
-  /\/\/(.*)\.convertkit-mail([1-9])?\.com\/o\//i,
+  inOrder(/\/\//, /\.convertkit-mail[1-9]?\.com\/o\//i),
   /polymail\.io(\/v2\/z\/)?/i,
   /share\.polymail\.io/i,
   /yamm-track\.appspot/i,
@@ -125,26 +150,26 @@ const EMAIL_TRACKING_PATTERNS = [
   /\/trk\?t=/i,
   /returnpath\.net\/pixel\.gif/i,
   /(outrch|whosen|getoutreach)\.com\/api\/mailings\/opened/i,
-  /\/\/(.*)\.intercom-\w+\.com(?:\/via)?\//i,
-  /\/\/links\..*\/oo\//i,
+  inOrder(/\/\//, /\.intercom-\w+\.com(?:\/via)?\//i),
+  inOrder(/\/\/links\./i, /\/oo\//i),
   /\.mjt\.lu\//i,
-  /\/oo\/.*\.gif/i,
+  inOrder(/\/oo\//i, /\.gif/i),
   /nethunt\.com\/api\/v1\/track\/email\//i,
   /apple\.com\/report\/2\/its_mail_sf/i,
   /\/o\/\w{10}\/\w{10}\//i,
-  /lt\.php(.*)\?l=open/i,
+  inOrder(/lt\.php/i, /\?l=open/i),
   /email81\.com\/case/i,
   /growthdot\.com\/api\/mail-tracking/i,
   /\/e2t\/(o|c|to)\//i,
   /getmailspring\.com\/open/i,
   /mixpanel\.com\/(trk|track)/i,
   /go\.sparkpostmail2\.com\/q\//i,
-  /\/\/click\..*\/open\.aspx/i,
+  inOrder(/\/\/click\./i, /\/open\.aspx/i),
   /infinite-stream-5194\.herokuapp\.com\/pixel\//i,
   /sailthru\.com\/trk/i,
   /trackapp\.io\/static\/img\/track\.gif/i,
   /trackapp\.io\/[a-z]\//i,
-  /sendibw{2}\.com\/track\//i,
+  /sendib\w{2}\.com\/track\//i,
   /email\.segment\.com\/e\/o\//i,
   /salesloft\.com\/email_trackers/i,
   /salesloftlinks\.com\/t\//i,
@@ -152,9 +177,9 @@ const EMAIL_TRACKING_PATTERNS = [
   /\/tools\/emails\/open\//i,
   /\/\w*I0\/\w{16}-\w{8}-\w{4}/i,
   /\/open\/\d{3}\/\w{10}/i,
-  /\/\/(.*)\.enewsletter\.pl\/(.*)\.gif/i,
+  inOrder(/\/\//, /\.enewsletter\.pl\//i, /\.gif/i),
   /\/optiext\/optiextension\.dll\?ID=/i,
-  /\/\/mx\.technolutions\.net\/ss\/o\/(.*)\/ho\.gif/i,
+  inOrder(/\/\/mx\.technolutions\.net\/ss\/o\//i, /\/ho\.gif/i),
   /\/\/tracking\.vocus\.io\//i,
   /\/tr\/op\//i,
   /\/m\/opening\//i,
@@ -165,7 +190,7 @@ const EMAIL_TRACKING_PATTERNS = [
   /\/tf\/o\//i,
   /\/via\/o\?h=/i,
   /\/eos\/v1\//i,
-  /\/gp\/r\.html\?.*ref_=pe_.*_open/i,
+  inOrder(/\/gp\/r\.html\?/i, /ref_=pe_/i, /_open/i),
   /\/pub\/as\?_ri_=/i,
   /\/q\/[^/]+~~\//i,
   /\/s\/eo\//i,
@@ -177,20 +202,69 @@ const EMAIL_TRACKING_PATTERNS = [
   /t\.paypal\.com\/ts\?v=/i,
   /click\.emails\.paypal\.com/i,
   /cdn\.shopify\.com\/shopifycloud\/shopify\/assets\/themes_support\/notifications\/spacer-/i,
-  /link\.mail\.beehiiv\.com\/ss\/.*\.gif/i,
+  inOrder(/link\.mail\.beehiiv\.com\/ss\//i, /\.gif/i),
   /line\.my\.salesforce\.com\/servlet\/servlet\.ImageServer\?/i,
-  /email\.[^/]+\.com\/o(?:[/?#]|$)/i,
+  hasEmailOpenPath,
 ];
 
-const GENERIC_TRACKING_PATHS = [
+const GENERIC_TRACKING_PATHS: TrackingPattern[] = [
   /\/(?:track|pixel|open|beacon|counter|analytics|stats|metrics|monitor)(?:[./?_-]|$)/i,
   /\/e\/o(?:[/?#]|$)/i,
-  /email.*track/i,
-  /track.*email/i,
-  /newsletter.*track/i,
-  /campaign.*track/i,
-  /marketing.*track/i,
+  inOrder(/email/i, /track/i),
+  inOrder(/track/i, /email/i),
+  inOrder(/newsletter/i, /track/i),
+  inOrder(/campaign/i, /track/i),
+  inOrder(/marketing/i, /track/i),
 ];
+
+const BASE64_CHARACTER = /[0-9a-z+/]/i;
+
+// Matches what /\/e\/o\/(?:[0-9a-z+/]{4})+(?:[0-9a-z+/]{2}==|[0-9a-z+/]{3}=)?(?:[/?#]|$)/i
+// matches: `/e/o/`, whole groups of four base64 characters with optional padding, then `/`, `?`,
+// `#` or the end. Because `/` is a base64 character, the expression can end at any `/` a multiple
+// of four characters into the run. Each run of base64 characters is scanned once. Expects a
+// lowercased value.
+export function hasBase64OpenPath(text: string): boolean {
+  const ends = (position: number) => position === text.length || "/?#".includes(text[position]!);
+  let marker = text.indexOf("/e/o/");
+  while (marker !== -1) {
+    // `/e/o/` is made of base64 characters, so every marker in this run shares its end.
+    let runEnd = marker;
+    while (runEnd < text.length && BASE64_CHARACTER.test(text[runEnd]!)) runEnd += 1;
+    const lastSlashByOffset = [-1, -1, -1, -1];
+    for (let position = marker + 5; position < runEnd; position += 1)
+      if (text[position] === "/") lastSlashByOffset[position % 4] = position;
+
+    for (; marker !== -1 && marker + 5 <= runEnd; marker = text.indexOf("/e/o/", marker + 1)) {
+      const groupsStart = marker + 5;
+      const length = runEnd - groupsStart;
+      if (lastSlashByOffset[groupsStart % 4]! >= groupsStart + 4) return true;
+      if (length >= 4 && length % 4 === 0 && ends(runEnd)) return true;
+      if (length >= 6 && length % 4 === 2 && text.startsWith("==", runEnd) && ends(runEnd + 2))
+        return true;
+      if (length >= 7 && length % 4 === 3 && text[runEnd] === "=" && ends(runEnd + 1)) return true;
+    }
+  }
+  return false;
+}
+
+// Matches what /email\.[^/]+\.com\/o(?:[/?#]|$)/i matches: a path segment that contains
+// `email.` and ends in `.com` with at least one character between them, followed by `/o` and then
+// `/`, `?`, `#` or the end. Expects a lowercased value.
+export function hasEmailOpenPath(value: string): boolean {
+  const segments = value.split("/");
+  return segments.some((segment, index) => {
+    const marker = segment.indexOf("email.");
+    const next = segments[index + 1];
+    return (
+      marker !== -1 &&
+      segment.endsWith(".com") &&
+      marker + 6 < segment.length - 4 &&
+      next !== undefined &&
+      /^o(?:[?#]|$)/.test(next)
+    );
+  });
+}
 
 const TRACKING_QUERY_PREFIXES = [
   "email_",
@@ -227,6 +301,12 @@ const ALLOWLIST = [
   },
 ];
 
+function matchesAnyPattern(value: string, patterns: TrackingPattern[]): boolean {
+  return patterns.some((pattern) =>
+    pattern instanceof RegExp ? pattern.test(value) : pattern(value),
+  );
+}
+
 function hostnameMatches(hostname: string, domain: string): boolean {
   return hostname === domain || hostname.endsWith(`.${domain}`);
 }
@@ -252,9 +332,9 @@ function trackingReason(source: string, aggressiveHeuristics: boolean): string |
   const url = parseRemoteUrl(source);
   if (!url || isAllowlisted(url)) return undefined;
 
-  const normalizedSource = source.toLowerCase();
+  // Match the parsed URL, which drops the tabs and newlines a browser ignores when it loads one.
   const hostname = url.hostname.toLowerCase();
-  if (EMAIL_TRACKING_PATTERNS.some((pattern) => pattern.test(normalizedSource)))
+  if (matchesAnyPattern(url.href.toLowerCase(), EMAIL_TRACKING_PATTERNS))
     return "Known tracking pattern";
   if (TRACKING_DOMAINS.some((domain) => hostnameMatches(hostname, domain)))
     return "Known tracking service";
@@ -266,7 +346,7 @@ function trackingReason(source: string, aggressiveHeuristics: boolean): string |
     return "Known tracking service";
   if (hostname.split(".").some((label) => TRACKING_SUBDOMAIN_LABELS.has(label)))
     return "Tracking subdomain";
-  if (GENERIC_TRACKING_PATHS.some((pattern) => pattern.test(`${url.pathname}${url.search}`)))
+  if (matchesAnyPattern(`${url.pathname}${url.search}`, GENERIC_TRACKING_PATHS))
     return "Tracking URL";
 
   const hasTrackingParameter = [...url.searchParams.keys()].some((key) =>
@@ -291,10 +371,10 @@ function parseSrcsetCandidates(value: string): SrcsetCandidate[] {
 
     const urlStart = position;
     while (position < value.length && !/\s/.test(value[position])) position += 1;
-    let url = value.slice(urlStart, position);
-    const trailingCommas = /,+$/.exec(url)?.[0].length ?? 0;
-    if (trailingCommas) {
-      url = url.slice(0, -trailingCommas);
+    let urlEnd = position;
+    while (urlEnd > urlStart && value[urlEnd - 1] === ",") urlEnd -= 1;
+    const url = value.slice(urlStart, urlEnd);
+    if (urlEnd < position) {
       if (url) candidates.push({ url, descriptor: "" });
       continue;
     }
@@ -391,16 +471,12 @@ function removeTrackingCssUrls(value: string): {
 } {
   const imageSetResult = removeTrackingImageSetCandidates(value);
   const trackingPixels = [...imageSetResult.trackingPixels];
-  const cleaned = imageSetResult.value.replace(
-    /url\(\s*(?:(["'])(.*?)\1|([^\s)]+))\s*\)/gi,
-    (match, _quote: string | undefined, quoted: string | undefined, bare: string | undefined) => {
-      const source = quoted || bare || "";
-      const reason = trackingReason(source, false);
-      if (!reason) return match;
-      trackingPixels.push(trackingPixelDetail(source, reason));
-      return "none";
-    },
-  );
+  const cleaned = replaceCssUrls(imageSetResult.value, ({ url: source }, match) => {
+    const reason = trackingReason(source, false);
+    if (!reason) return match;
+    trackingPixels.push(trackingPixelDetail(source, reason));
+    return "none";
+  });
   return { value: cleaned, trackingPixels };
 }
 
@@ -490,8 +566,8 @@ function splitCssFunctionArguments(value: string): string[] {
 function cssImageCandidateUrl(candidate: string): string | undefined {
   const stringMatch = /^(["'])(.*?)\1/.exec(candidate);
   if (stringMatch) return stringMatch[2];
-  const urlMatch = /^url\(\s*(?:(["'])(.*?)\1|([^\s)]+))\s*\)/i.exec(candidate);
-  return urlMatch?.[2] || urlMatch?.[3];
+  const [url] = findCssUrls(candidate);
+  return url?.start === 0 ? url.url : undefined;
 }
 
 export function blockTrackingPixels(document: Document): TrackingPixelReport {

@@ -16,6 +16,8 @@ import { convertEmailToDarkMode } from "../src/renderer/email/convert-to-dark-mo
 import { collectRemoteImageUrls } from "../src/renderer/email/remote-images";
 import {
   blockTrackingPixels,
+  hasBase64OpenPath,
+  hasEmailOpenPath,
   TRACKING_RULESET_METADATA,
 } from "../src/renderer/email/tracking-pixels";
 import type { MailMessage } from "../src/shared/contracts";
@@ -515,6 +517,166 @@ describe("email HTML security", () => {
     expect(parsed.documentElement.innerHTML).not.toContain("t.yesware.com");
     expect(parsed.documentElement.innerHTML).not.toContain("eotrx.substackcdn.com");
     expect(parsed.documentElement.innerHTML).toContain("https://images.example/content.png");
+  });
+
+  it("blocks Sendinblue open trackers", () => {
+    const parsed = new DOMParser().parseFromString(
+      '<img src="https://r.sendibt3.com/track/open?id=1" width="600" height="400">',
+      "text/html",
+    );
+
+    const report = blockTrackingPixels(parsed);
+
+    expect(report.trackingPixels).toEqual([
+      {
+        url: "https://r.sendibt3.com/track/open?id=1",
+        domain: "r.sendibt3.com",
+        reason: "Known tracking pattern",
+      },
+    ]);
+  });
+
+  it("blocks pattern-matched trackers that are padded or contain ignored whitespace", () => {
+    const padding = "a".repeat(5_000);
+    const urls = [
+      `https://email.shop.example/wf/open?upn=abc&p=${padding}`,
+      `https://www.amazon.com/gp/r.html?C=1&ref_=pe_123_open&p=${padding}`,
+      `https://www.amazon.com/gp/r.html?p=${padding}&ref_=pe_123_open`,
+      `https://x.example/oo/${padding}.gif`,
+      "https://x.example/wf/o&#9;pen?upn=1",
+    ];
+    const parsed = new DOMParser().parseFromString(
+      urls.map((url) => `<img src="${url}" width="600" height="400">`).join(""),
+      "text/html",
+    );
+
+    const report = blockTrackingPixels(parsed);
+
+    expect(report.blockedCount).toBe(urls.length);
+    expect(report.trackingPixels.every(({ reason }) => reason === "Known tracking pattern")).toBe(
+      true,
+    );
+  });
+
+  it("does not block long content image URLs that only resemble a tracker", () => {
+    const parsed = new DOMParser().parseFromString(
+      `<img src="https://cdn.example/e/o/${"abcd".repeat(600)}.png" width="600" height="400">`,
+      "text/html",
+    );
+
+    expect(blockTrackingPixels(parsed).blockedCount).toBe(0);
+  });
+
+  it("matches the open-tracking path expressions it replaces", () => {
+    const base64 =
+      /\/e\/o\/(?:[0-9a-z+/]{4})+(?:(?:[0-9a-z+/]{2}==)|(?:[0-9a-z+/]{3}=))?(?:[/?#]|$)/i;
+    const email = /email\.[^/]+\.com\/o(?:[/?#]|$)/i;
+    const pieces = [
+      "/e/o/",
+      "/",
+      "a",
+      "B",
+      "1",
+      "+",
+      "=",
+      "==",
+      "?",
+      "#",
+      ".",
+      "-",
+      "o",
+      "email.",
+      ".com",
+      "/o",
+    ];
+    let seed = 1;
+    const random = (limit: number) => {
+      seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+      return seed % limit;
+    };
+    for (let sample = 0; sample < 20_000; sample += 1) {
+      const value = Array.from({ length: random(14) }, () => pieces[random(pieces.length)]).join(
+        "",
+      );
+      expect(hasBase64OpenPath(value.toLowerCase()), value).toBe(base64.test(value));
+      expect(hasEmailOpenPath(value.toLowerCase()), value).toBe(email.test(value));
+    }
+  });
+
+  it("finds CSS URLs with escaped quotes or spaces, non-ASCII spaces, and comments", () => {
+    const trackers = [
+      'url("https://t.yesware.com/t/a\\"b.gif")',
+      "url('https://t.yesware.com/t/c\\'d.gif')",
+      "url(https://t.yesware.com/t/e\\ f.gif)",
+      "url(https://t.yesware.com/t/g\u00a0h.gif)",
+      'url("https://t.yesware.com/t/i.gif" /* note */ )',
+    ];
+    // A url() left open at the end of a stylesheet is closed by the end of the text.
+    const unclosed = [
+      'url("https://t.yesware.com/t/j.gif\\")',
+      "url(https://t.yesware.com/t/k.gif",
+    ];
+    const html = `<style>${trackers.map((url, index) => `.t${index} { background: ${url}; }`).join("\n")}
+      .content { background: url(https://images.example/a.png); }</style>
+      ${unclosed.map((url) => `<style>.u { background: ${url}</style>`).join("")}`;
+    const parsed = new DOMParser().parseFromString(html, "text/html");
+
+    const report = blockTrackingPixels(parsed);
+
+    expect(report.blockedCount).toBe(trackers.length + unclosed.length);
+    for (const style of parsed.querySelectorAll("style"))
+      expect(style.textContent).not.toContain("yesware");
+    expect(collectRemoteImageUrls(html)).toEqual(["https://images.example/a.png"]);
+  });
+
+  it("handles crafted URLs, stylesheets, and srcsets without stalling", { timeout: 30_000 }, () => {
+    const craftedUrls = [
+      `https://images.example/gp/r.html?${"/gp/r.html?".repeat(1_200)}${"ref_=pe_".repeat(1_200)}`,
+      ...["/gp/r.html?ref_=pe_", "//x.enewsletter.pl/", "//tracking/oo/", "email.", "/e/o/x/"].map(
+        (part) => `https://images.example/${part.repeat(20_000 / part.length)}`,
+      ),
+    ];
+    const craftedCss = [
+      'url("'.repeat(20_000),
+      "url(".repeat(20_000),
+      `${"url(".repeat(10_000)}${" ".repeat(10_000)}`,
+      `${'url("a"/*'.repeat(10_000)}${" ".repeat(10_000)}`,
+      `background: url(${" ".repeat(50_000)}`,
+      `background: ${"image-set(".repeat(20_000)}`,
+      "/*".repeat(20_000),
+      `${'url("a"/*\n'.repeat(10_000)}*/${"/**/".repeat(10_000)}x`,
+      `.chain { ${Array.from({ length: 60 }, (_, level) => `--p${level}: var(--p${level + 1}) var(--p${level + 1});`).join(" ")} background: var(--p0); }`,
+    ].join("\n");
+    const html = `${craftedUrls
+      .flatMap((url) => Array.from({ length: 20 }, () => `<img src="${url}" srcset="${url} 2x">`))
+      .join("")}
+      <style>${craftedCss}
+        .tracked { background: url("https://t.yesware.com/t/message-1.gif"); }</style>
+      <img src="https://images.example/content.png" srcset="a${",".repeat(50_000)}b 2x"
+        width="600" height="400">
+      <img src="https://images.example/b.png" srcset="https://images.example/a.png,${`a${" ".repeat(20_000)}b,`.repeat(5)}"
+        width="600" height="400">
+      <img src="https://www.amazon.com/gp/r.html?C=1&ref_=pe_123_open" width="600" height="400">`;
+
+    // Before these fixes each check took from several seconds to minutes on this message.
+    const parsed = new DOMParser().parseFromString(html, "text/html");
+    let started = performance.now();
+    const report = blockTrackingPixels(parsed);
+    expect(performance.now() - started).toBeLessThan(5_000);
+    expect(report.trackingPixels.map(({ url }) => url)).toEqual([
+      craftedUrls.at(-1),
+      "https://www.amazon.com/gp/r.html?C=1&ref_=pe_123_open",
+      "https://t.yesware.com/t/message-1.gif",
+    ]);
+
+    started = performance.now();
+    collectRemoteImageUrls(html);
+    expect(performance.now() - started).toBeLessThan(5_000);
+
+    // Without <img> tags, hasRemoteImages has to work through every stylesheet check.
+    started = performance.now();
+    expect(hasRemoteImages(`<style>${craftedCss}</style>`)).toBe(false);
+    expect(performance.now() - started).toBeLessThan(5_000);
   });
 
   it("keeps legitimate content in CSS, legacy backgrounds, and picture sources", () => {

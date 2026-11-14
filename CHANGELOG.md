@@ -4,6 +4,11 @@ Fluxmail Desktop records user-facing changes in this file. The format follows [C
 
 ## [Unreleased](https://github.com/fluxmailai/fluxmail-desktop/compare/v0.9.1...HEAD)
 
+### Fixed
+
+- Block Sendinblue (Brevo) tracking pixels, which the tracker list missed because of a typo.
+- Stop crafted image URLs and stylesheets from freezing the app while it checks a message for trackers and remote images.
+
 ## [0.9.1](https://github.com/fluxmailai/fluxmail-desktop/releases/tag/v0.9.1) - 2026-11-11
 
 _These artifacts use Fluxmail's self-signed certificate and have not been notarized by Apple, so macOS will require approval before opening the app._
