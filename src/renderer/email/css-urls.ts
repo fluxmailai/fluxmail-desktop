@@ -29,20 +29,42 @@ export function findCssUrls(value: string): CssUrl[] {
   if (!start.test(value)) return urls;
   start.lastIndex = 0;
 
-  // Several `url(` can be followed by the same whitespace or unclosed comment, so cache both
-  // lookups to scan each stretch of text once.
+  // Several `url(` can be followed by the same whitespace, or by comments that all close at the
+  // same `*/` and continue into the same chain of comments. Cache the whitespace lookup, find
+  // comment ends by binary search, and remember where each chain ends, so each stretch of text
+  // is walked once.
   const nextNonWhitespace = cachedSearch((from) => {
     while (CSS_WHITESPACE.has(value[from]!)) from += 1;
     return from;
   });
-  const nextCommentClose = cachedSearch((from) => {
-    const index = value.indexOf("*/", from);
-    return index === -1 ? value.length : index;
-  });
+  const commentCloses: number[] = [];
+  for (let index = value.indexOf("*/"); index !== -1; index = value.indexOf("*/", index + 1))
+    commentCloses.push(index);
+  const afterComment = (open: number) => {
+    let low = 0;
+    let high = commentCloses.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (commentCloses[middle]! < open + 2) low = middle + 1;
+      else high = middle;
+    }
+    return low < commentCloses.length ? commentCloses[low]! + 2 : value.length;
+  };
+  const chainEnds = new Map<number, number>();
   const skipWhitespaceAndComments = (from: number) => {
+    const walked: number[] = [];
     let position = nextNonWhitespace(from);
-    while (value.startsWith("/*", position))
-      position = nextNonWhitespace(Math.min(nextCommentClose(position + 2) + 2, value.length));
+    while (value.startsWith("/*", position)) {
+      const next = afterComment(position);
+      const known = chainEnds.get(next);
+      if (known !== undefined) {
+        position = known;
+        break;
+      }
+      walked.push(next);
+      position = nextNonWhitespace(next);
+    }
+    for (const walkedPosition of walked) chainEnds.set(walkedPosition, position);
     return position;
   };
 

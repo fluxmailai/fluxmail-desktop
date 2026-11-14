@@ -644,6 +644,7 @@ describe("email HTML security", () => {
       `background: url(${" ".repeat(50_000)}`,
       `background: ${"image-set(".repeat(20_000)}`,
       "/*".repeat(20_000),
+      `${'url("a"/*\n'.repeat(10_000)}*/${"/**/".repeat(10_000)}x`,
       `.chain { ${Array.from({ length: 60 }, (_, level) => `--p${level}: var(--p${level + 1}) var(--p${level + 1});`).join(" ")} background: var(--p0); }`,
     ].join("\n");
     const html = `${craftedUrls
