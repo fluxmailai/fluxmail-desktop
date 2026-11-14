@@ -12,7 +12,10 @@ import {
   highlightEmailMatches,
 } from "../src/renderer/components/EmailHtml";
 import { TrackingPixelIndicator } from "../src/renderer/components/TrackingPixelIndicator";
-import { convertEmailToDarkMode } from "../src/renderer/email/convert-to-dark-mode";
+import {
+  convertEmailToDarkMode,
+  removeSenderDarkModeCSS,
+} from "../src/renderer/email/convert-to-dark-mode";
 import { collectRemoteImageUrls } from "../src/renderer/email/remote-images";
 import {
   blockTrackingPixels,
@@ -794,6 +797,42 @@ describe("email HTML security", () => {
     );
     for (const style of parsed.querySelectorAll("style"))
       expect(style.textContent).not.toContain("yesware");
+  });
+
+  it("blocks protocol-relative and custom-property trackers", () => {
+    const document = buildEmailDocument(
+      `<style>.a { background: url(//t.yesware.com/t/a.gif); }
+        .b { --pixel: "https://t.yesware.com/t/b.gif" 1x; background-image: image-set(var(--pixel)); }</style>
+       <img src="//t.yesware.com/t/c.gif" width="1" height="1">
+       <p class="a b" style="background-image: url(//t.yesware.com/t/d.gif)">Hello</p>`,
+      {},
+      true,
+    );
+
+    expect(document).not.toContain("yesware");
+  });
+
+  it("removes sender dark mode rules after stray quotes or comment-like URLs", () => {
+    for (const before of [
+      ".a{font-family:'Trebuchet MS, Arial;color:#333}",
+      ".a{background:url(https://images.example/*/a.png)}",
+    ]) {
+      const html = removeSenderDarkModeCSS(
+        `<style>${before}\n@media (prefers-color-scheme: dark){.b{color:#ffffff !important}}\n.c{color:blue}</style>`,
+      );
+
+      expect(html, before).not.toContain("prefers-color-scheme");
+      expect(html, before).toContain(".c{color:blue}");
+    }
+  });
+
+  it("converts deeply nested gradients to dark mode", () => {
+    const html = `<p style="color: #000000; background: ${"linear-gradient(".repeat(8_000)}white${")".repeat(8_000)}">Hello</p>`;
+
+    const converted = convertEmailToDarkMode(html);
+
+    expect(converted).not.toContain("white");
+    expect(converted).not.toContain("#000000");
   });
 
   it("blocks the same crafted stylesheet trackers when images load directly", () => {

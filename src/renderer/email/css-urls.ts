@@ -49,10 +49,20 @@ interface CssDeclaration {
   references: string[];
 }
 
+interface CssString {
+  start: number;
+  end: number;
+  value: string;
+}
+
 interface CssScan {
   urls: CssUrl[];
   imageSets: CssImageSet[];
+  /** Every string that isn't a bad string. */
+  strings: CssString[];
   declarations: CssDeclaration[];
+  /** The index of the `}` that closes each `{`. Blocks the end of the text closes aren't included. */
+  blocks: Map<number, number>;
 }
 
 type TokenKind =
@@ -167,20 +177,23 @@ function consumeEscape(css: string, index: number): { value: string; next: numbe
   return { value, next: position + value.length };
 }
 
+// The consume functions below copy runs of plain characters as slices rather than one character at
+// a time, which keeps a long token such as a data: URL cheap.
+
 function consumeName(css: string, index: number): { name: string; next: number } {
   let name = "";
   let position = index;
+  let runStart = position;
   while (position < css.length) {
     if (isNameCharacter(css[position])) {
-      name += css[position];
       position += 1;
     } else if (isValidEscape(css, position)) {
       const escape = consumeEscape(css, position);
-      name += escape.value;
-      position = escape.next;
+      name += css.slice(runStart, position) + escape.value;
+      position = runStart = escape.next;
     } else break;
   }
-  return { name, next: position };
+  return { name: name + css.slice(runStart, position), next: position };
 }
 
 function consumeNumber(css: string, index: number): number {
@@ -211,11 +224,18 @@ function consumeString(
   const quote = css[index];
   let value = "";
   let position = index + 1;
+  let runStart = position;
+  const done = (next: number, valid: boolean) => ({
+    value: value + css.slice(runStart, position),
+    next,
+    valid,
+  });
   while (position < css.length) {
     const character = css[position]!;
-    if (character === quote) return { value, next: position + 1, valid: true };
-    if (isNewline(character)) return { value, next: position, valid: false };
+    if (character === quote) return done(position + 1, true);
+    if (isNewline(character)) return done(position, false);
     if (character === "\\") {
+      value += css.slice(runStart, position);
       const next = css[position + 1];
       if (next === undefined) position += 1;
       else if (isNewline(next)) position += next === "\r" && css[position + 2] === "\n" ? 3 : 2;
@@ -224,12 +244,12 @@ function consumeString(
         value += escape.value;
         position = escape.next;
       }
+      runStart = position;
       continue;
     }
-    value += character;
     position += 1;
   }
-  return { value, next: position, valid: true };
+  return done(position, true);
 }
 
 // Consumes an unquoted url() from just after its opening parenthesis and any whitespace. A bad URL,
@@ -241,13 +261,19 @@ function consumeUnquotedUrl(
 ): { value: string; next: number; valid: boolean } {
   let value = "";
   let position = index;
+  let runStart = position;
   while (position < css.length) {
     const character = css[position]!;
-    if (character === ")") return { value, next: position + 1, valid: true };
+    if (character === ")") {
+      value += css.slice(runStart, position);
+      return { value, next: position + 1, valid: true };
+    }
     if (isWhitespace(character)) {
+      value += css.slice(runStart, position);
       while (isWhitespace(css[position])) position += 1;
       if (position >= css.length) return { value, next: position, valid: true };
       if (css[position] === ")") return { value, next: position + 1, valid: true };
+      runStart = position;
       break;
     }
     if (character === '"' || character === "'" || character === "(" || isNonPrintable(character))
@@ -255,13 +281,13 @@ function consumeUnquotedUrl(
     if (character === "\\") {
       if (!isValidEscape(css, position)) break;
       const escape = consumeEscape(css, position);
-      value += escape.value;
-      position = escape.next;
+      value += css.slice(runStart, position) + escape.value;
+      position = runStart = escape.next;
       continue;
     }
-    value += character;
     position += 1;
   }
+  value += css.slice(runStart, position);
   if (position >= css.length) return { value, next: position, valid: true };
   while (position < css.length) {
     if (css[position] === ")") return { value, next: position + 1, valid: false };
@@ -277,13 +303,17 @@ function functionKind(name: string): Frame["kind"] {
   return "function";
 }
 
-// True for a URL a browser would load from the network rather than from the message itself.
-function isRemoteImageUrl(url: string): boolean {
+/**
+ * Parses an image URL a browser would load from the network rather than from the message itself.
+ * A protocol-relative URL counts, because loading images upgrades it to https.
+ */
+export function parseRemoteImageUrl(source: string): URL | undefined {
   try {
-    const { protocol } = new URL(url);
-    return protocol === "http:" || protocol === "https:";
+    const trimmed = source.trim();
+    const url = new URL(trimmed.startsWith("//") ? `https:${trimmed}` : trimmed);
+    return url.protocol === "http:" || url.protocol === "https:" ? url : undefined;
   } catch {
-    return false;
+    return undefined;
   }
 }
 
@@ -291,6 +321,8 @@ function scanCss(css: string): CssScan {
   const urls: CssUrl[] = [];
   const imageSets: CssImageSet[] = [];
   const declarations: CssDeclaration[] = [];
+  const strings: CssString[] = [];
+  const blocks = new Map<number, number>();
   const stack: Frame[] = [];
   const openDeclarations: { index: number; depth: number }[] = [];
   let atDeclarationStart = true;
@@ -299,7 +331,7 @@ function scanCss(css: string): CssScan {
 
   const currentDeclaration = () => openDeclarations.at(-1)?.index;
   const markRemote = (declaration: number | undefined, url: string) => {
-    if (declaration !== undefined && !declarations[declaration]!.remote && isRemoteImageUrl(url))
+    if (declaration !== undefined && !declarations[declaration]!.remote && parseRemoteImageUrl(url))
       declarations[declaration]!.remote = true;
   };
   const closeDeclarations = (fromDepth: number) => {
@@ -397,6 +429,13 @@ function scanCss(css: string): CssScan {
     if (character === '"' || character === "'") {
       const string = consumeString(css, index);
       index = string.next;
+      if (string.valid) {
+        strings.push({ start, end: index, value: string.value });
+        // A string in a custom property can become an image through image-set(var()).
+        const declaration = currentDeclaration();
+        if (declaration !== undefined && declarations[declaration]!.property.startsWith("--"))
+          markRemote(declaration, string.value);
+      }
       token(string.valid ? "string" : "other", start, index, string.value);
       continue;
     }
@@ -464,7 +503,10 @@ function scanCss(css: string): CssScan {
     index += 1;
     const top = stack.at(-1);
     if (top && character === top.closer) {
-      if (character === "}") token("close-brace", start, index);
+      if (character === "}") {
+        token("close-brace", start, index);
+        blocks.set(top.start, start);
+      }
       pop(index);
       if (character === "}") atDeclarationStart = true;
       continue;
@@ -493,12 +535,12 @@ function scanCss(css: string): CssScan {
 
   urls.sort((a, b) => a.start - b.start);
   imageSets.sort((a, b) => a.start - b.start);
-  return { urls, imageSets, declarations };
+  return { urls, imageSets, strings, declarations, blocks };
 }
 
-/** Finds every url() a browser would load from CSS text, with escapes in each URL decoded. */
-export function findCssUrls(css: string): CssUrl[] {
-  return scanCss(css).urls;
+/** Maps the index of each `{` in CSS text to the `}` that closes it, as a browser pairs them. */
+export function findCssBlocks(css: string): Map<number, number> {
+  return scanCss(css).blocks;
 }
 
 /** Lists the images CSS text loads through url() and image-set() strings, in order. */
@@ -519,6 +561,11 @@ export interface CssImageRewrite {
   /** Returns the text to put in place of an image-set() string candidate, or undefined to keep it. */
   imageSetString?(url: string): string | undefined;
   /**
+   * Returns the text to put in place of any other string, or undefined to keep it. A string can
+   * still become an image, for example through a custom property used in image-set(var()).
+   */
+  string?(value: string): string | undefined;
+  /**
    * Returns true to drop an image-set() candidate whose image is this string or url(). An image-set()
    * with every candidate dropped becomes `none`.
    */
@@ -527,19 +574,24 @@ export interface CssImageRewrite {
 
 /** Rewrites the images in CSS text. Each callback runs once per image, in order. */
 export function rewriteCssImages(css: string, rewrite: CssImageRewrite): string {
-  const { urls, imageSets } = scanCss(css);
+  const { urls, imageSets, strings } = scanCss(css);
   type Node =
-    | { kind: "url"; start: number; end: number; url: string }
-    | { kind: "string"; start: number; end: number; url: string }
+    | { kind: "url" | "candidate-string" | "string"; start: number; end: number; url: string }
     | ({ kind: "image-set" } & CssImageSet);
+  const candidateStrings = new Set(
+    imageSets.flatMap(({ candidates }) =>
+      candidates.flatMap(({ image }) => (image?.isString ? [image.start] : [])),
+    ),
+  );
   const nodes: Node[] = [
     ...urls.map((url) => ({ kind: "url" as const, ...url })),
     ...imageSets.map((imageSet) => ({ kind: "image-set" as const, ...imageSet })),
-    ...imageSets.flatMap(({ candidates }) =>
-      candidates.flatMap(({ image }) =>
-        image?.isString ? [{ kind: "string" as const, ...image }] : [],
-      ),
-    ),
+    ...strings.map(({ start, end, value }) => ({
+      kind: candidateStrings.has(start) ? ("candidate-string" as const) : ("string" as const),
+      start,
+      end,
+      url: value,
+    })),
   ].sort((a, b) => a.start - b.start || b.end - a.end);
 
   // The nodes nest without overlapping. Walk them in order and collect edits that don't overlap:
@@ -555,8 +607,12 @@ export function rewriteCssImages(css: string, rewrite: CssImageRewrite): string 
     if (dropped.length && dropped.at(-1)!.start <= node.start) continue;
 
     if (node.kind !== "image-set") {
-      const text =
-        node.kind === "url" ? rewrite.url?.(node.url) : rewrite.imageSetString?.(node.url);
+      const replace = {
+        url: rewrite.url,
+        "candidate-string": rewrite.imageSetString,
+        string: rewrite.string,
+      }[node.kind];
+      const text = replace?.(node.url);
       if (text === undefined) continue;
       edits.push({ start: node.start, end: node.end, text });
       replacedThrough = node.end;
@@ -577,8 +633,9 @@ export function rewriteCssImages(css: string, rewrite: CssImageRewrite): string 
       text: index ? ", " : "",
     }));
     gaps.push({ start: kept.at(-1)!.end, end: node.end, text: ")" });
-    edits.push(...gaps);
-    dropped.push(...gaps.reverse());
+    // Push one at a time: spreading an image-set() with many candidates overflows the stack.
+    for (const gap of gaps) edits.push(gap);
+    for (let index = gaps.length - 1; index >= 0; index--) dropped.push(gaps[index]!);
   }
 
   edits.sort((a, b) => a.start - b.start);

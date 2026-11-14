@@ -1,4 +1,11 @@
-import { parseSrcset, rewriteCssImages, serializeSrcset, type SrcsetCandidate } from "./css-urls";
+import {
+  cssString,
+  parseRemoteImageUrl,
+  parseSrcset,
+  rewriteCssImages,
+  serializeSrcset,
+  type SrcsetCandidate,
+} from "./css-urls";
 
 export interface TrackingPixelReport {
   totalImages: number;
@@ -311,15 +318,6 @@ function hostnameMatches(hostname: string, domain: string): boolean {
   return hostname === domain || hostname.endsWith(`.${domain}`);
 }
 
-function parseRemoteUrl(source: string): URL | undefined {
-  try {
-    const url = new URL(source);
-    return url.protocol === "http:" || url.protocol === "https:" ? url : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 function isAllowlisted(url: URL): boolean {
   return ALLOWLIST.some(
     (rule) =>
@@ -329,7 +327,7 @@ function isAllowlisted(url: URL): boolean {
 }
 
 function trackingReason(source: string, aggressiveHeuristics: boolean): string | undefined {
-  const url = parseRemoteUrl(source);
+  const url = parseRemoteImageUrl(source);
   if (!url || isAllowlisted(url)) return undefined;
 
   // Match the parsed URL, which drops the tabs and newlines a browser ignores when it loads one.
@@ -418,7 +416,7 @@ function imageSources(image: HTMLImageElement): string[] {
 }
 
 function trackingPixelDetail(source: string, reason: string): TrackingPixelDetail {
-  return { url: source, domain: parseRemoteUrl(source)?.hostname || "Unknown domain", reason };
+  return { url: source, domain: parseRemoteImageUrl(source)?.hostname || "Unknown domain", reason };
 }
 
 function removeTrackingCssUrls(value: string): {
@@ -434,6 +432,8 @@ function removeTrackingCssUrls(value: string): {
   const cleaned = rewriteCssImages(value, {
     removeImageSetCandidate: isTracker,
     url: (source) => (isTracker(source) ? "none" : undefined),
+    // A tracker URL in a plain string can still load, through image-set(var(--x)) for example.
+    string: (source) => (isTracker(source) ? cssString("data:,") : undefined),
   });
   return { value: cleaned, trackingPixels };
 }
@@ -449,9 +449,9 @@ export function blockTrackingPixels(document: Document): TrackingPixelReport {
     const source = image.getAttribute("src") || "";
     const sourceReason = trackingReason(source, !likelyContent);
     const srcsetResult = filterTrackingSrcset(image.getAttribute("srcset") || "", !likelyContent);
-    const remoteSources = imageSources(image).filter((candidate) => parseRemoteUrl(candidate));
+    const remoteSources = imageSources(image).filter((candidate) => parseRemoteImageUrl(candidate));
     const hasNonAllowlistedRemoteSource = remoteSources.some((candidate) => {
-      const url = parseRemoteUrl(candidate);
+      const url = parseRemoteImageUrl(candidate);
       return url !== undefined && !isAllowlisted(url);
     });
     const structuralReason = hasNonAllowlistedRemoteSource

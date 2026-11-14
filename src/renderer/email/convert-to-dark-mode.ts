@@ -8,7 +8,7 @@ import {
   isValidColor,
   analyzeColor,
 } from "./dark-mode-transform";
-import { stripCssComments } from "./css-urls";
+import { findCssBlocks, stripCssComments } from "./css-urls";
 
 // Email HTML and CSS are untrusted, so every pattern here has to run in time linear in its input.
 // A pattern that rescans the rest of the text from each place it could start, such as `\s*x$` or
@@ -177,11 +177,9 @@ export function convertEmailToDarkMode(html: string, options: DarkModeOptions = 
   const opts = { ...DEFAULT_OPTIONS, ...options };
 
   try {
-    // Step 1: Remove conflicting dark mode media queries and styles
-    let processedHtml = removeConflictingDarkModeCSS(html);
-
-    // Step 2: Transform CSS in style blocks without inlining
-    processedHtml = transformCSSInStyleTags(processedHtml, opts);
+    // Steps 1 and 2: Remove conflicting dark mode media queries and styles, and transform CSS in
+    // style blocks without inlining
+    const processedHtml = removeConflictingDarkModeCSS(html, opts);
 
     // Step 3: Parse the HTML
     const parser = new DOMParser();
@@ -283,7 +281,12 @@ export function convertEmailToDarkMode(html: string, options: DarkModeOptions = 
   }
 }
 
-export function removeSenderDarkModeCSS(html: string): string {
+// `transformStyleSheet` runs on each style sheet after the sender's dark mode rules are gone, and
+// removes the sheet when it returns null.
+export function removeSenderDarkModeCSS(
+  html: string,
+  transformStyleSheet?: (css: string) => string | null,
+): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString("<!doctype html><html><body></body></html>", "text/html");
   const template = doc.createElement("template");
@@ -313,22 +316,26 @@ export function removeSenderDarkModeCSS(html: string): string {
       continue;
     }
 
-    styleElement.textContent = removeDarkColorSchemeMediaRules(
-      styleElement.textContent || "",
-    ).replace(/(^|[;{]\s*)color-scheme\s*:\s*[^;}]+;?/gi, "$1");
+    const css = removeDarkColorSchemeMediaRules(styleElement.textContent || "").replace(
+      /(^|[;{]\s*)color-scheme\s*:\s*[^;}]+;?/gi,
+      "$1",
+    );
+    const transformed = transformStyleSheet ? transformStyleSheet(css) : css;
+    if (transformed === null) styleElement.remove();
+    else styleElement.textContent = transformed;
   }
 
   return template.innerHTML;
 }
 
-// Removes `@media (prefers-color-scheme: dark) { ... }` rules. The end of each rule is found from a
-// table of matching braces built in one pass, so rules that never close don't rescan the text.
+// Removes `@media (prefers-color-scheme: dark) { ... }` rules. The end of each rule is found from the
+// braces a browser would pair, found in one pass, so rules that never close don't rescan the text.
 function removeDarkColorSchemeMediaRules(css: string): string {
   const rule = /@media\s*\(\s*prefers-color-scheme\s*:\s*dark\s*\)\s*\{/gi;
   if (!rule.test(css)) return css;
   rule.lastIndex = 0;
 
-  const closingBraces = matchCssBraces(css);
+  const closingBraces = findCssBlocks(css);
   let result = "";
   let copiedThrough = 0;
   for (let match = rule.exec(css); match; match = rule.exec(css)) {
@@ -339,26 +346,6 @@ function removeDarkColorSchemeMediaRules(css: string): string {
     rule.lastIndex = copiedThrough;
   }
   return result + css.slice(copiedThrough);
-}
-
-// Maps the index of each `{` to the index of the `}` that closes it, skipping comments and strings.
-function matchCssBraces(css: string): Map<number, number> {
-  const closingBraces = new Map<number, number>();
-  const open: number[] = [];
-  for (let index = 0; index < css.length; index++) {
-    const char = css[index];
-    if (char === "/" && css[index + 1] === "*") {
-      const close = css.indexOf("*/", index + 2);
-      index = close === -1 ? css.length : close + 1;
-    } else if (char === '"' || char === "'") {
-      index = findCssStringEnd(css, index, char) - 1;
-    } else if (char === "{") {
-      open.push(index);
-    } else if (char === "}" && open.length) {
-      closingBraces.set(open.pop()!, index);
-    }
-  }
-  return closingBraces;
 }
 
 const FORCED_LIGHT_SELECTOR =
@@ -380,45 +367,33 @@ function hasForcedLightRule(css: string): boolean {
   return false;
 }
 
-// Applies `transform` to a fragment of email HTML through an inert template.
-function transformHtmlFragment(html: string, transform: (content: DocumentFragment) => void) {
-  const doc = new DOMParser().parseFromString(
-    "<!doctype html><html><body></body></html>",
-    "text/html",
-  );
-  const template = doc.createElement("template");
-  template.innerHTML = html;
-  transform(template.content);
-  return template.innerHTML;
+const FORCED_OVERRIDES = [
+  /background-color\s*:\s*#FEFEFE\s*!\s*important/gi,
+  /color\s*:\s*#010101\s*!\s*important/gi,
+];
+
+function removeForcedOverrides(value: string): string {
+  return FORCED_OVERRIDES.reduce((result, pattern) => result.replace(pattern, ""), value);
 }
 
-function removeConflictingDarkModeCSS(html: string): string {
+function removeConflictingDarkModeCSS(html: string, options: DarkModeOptions): string {
   // Only remove CSS that explicitly conflicts with dark mode, not normal email styles
-  let processedHtml = removeSenderDarkModeCSS(html);
+  const processedHtml = removeSenderDarkModeCSS(html, (css) => {
+    // Only remove very specific problematic style blocks that use !important overrides
+    if (hasForcedLightRule(css)) return null;
 
-  // Only remove very specific problematic style blocks that use !important overrides
-  processedHtml = transformHtmlFragment(processedHtml, (content) => {
-    for (const style of content.querySelectorAll("style"))
-      if (hasForcedLightRule(style.textContent || "")) style.remove();
+    // Only remove CSS rules that use !important overrides with #FEFEFE or #010101
+    const cleaned = removeForcedOverrides(css);
+    try {
+      return transformCSSContent(cleaned, options);
+    } catch (error) {
+      console.error("Failed to transform CSS in style tags, falling back to original:", error);
+      return cleaned;
+    }
   });
 
-  // Only remove CSS rules that use !important overrides with #FEFEFE or #010101
-  processedHtml = processedHtml.replace(/background-color\s*:\s*#FEFEFE\s*!\s*important/gi, "");
-  processedHtml = processedHtml.replace(/color\s*:\s*#010101\s*!\s*important/gi, "");
-
-  return processedHtml;
-}
-
-function transformCSSInStyleTags(html: string, options: DarkModeOptions): string {
-  try {
-    return transformHtmlFragment(html, (content) => {
-      for (const style of content.querySelectorAll("style"))
-        style.textContent = transformCSSContent(style.textContent || "", options);
-    });
-  } catch (error) {
-    console.error("Failed to transform CSS in style tags, falling back to original:", error);
-    return html;
-  }
+  // Also remove the overrides from inline styles.
+  return removeForcedOverrides(processedHtml);
 }
 
 function transformCSSContent(cssContent: string, options: DarkModeOptions): string {
@@ -628,68 +603,76 @@ const CSS_COLOR_FUNCTION = /^(?:rgba?|hsla?)$/i;
 
 function transformCssColors(value: string, transform: (color: string) => string): string {
   // Find every function's closing parenthesis up front. Searching from each `(` rescans the rest of
-  // the text when parentheses don't close, and nested gradients are walked in place for the same
-  // reason.
+  // the text when parentheses don't close. Nested gradients are walked in place with a stack of the
+  // ends of the gradients being read, rather than by recursion, which deep nesting would overflow.
   const closingParentheses = matchCssParentheses(value);
+  const gradientEnds: number[] = [];
+  let end = value.length;
+  let result = "";
+  let index = 0;
 
-  const transformRange = (start: number, end: number): string => {
-    let result = "";
-    let index = start;
+  for (;;) {
+    if (index >= end) {
+      if (!gradientEnds.length) break;
+      result += ")";
+      index = end + 1;
+      end = gradientEnds.pop()!;
+      continue;
+    }
+    const char = value[index]!;
 
-    while (index < end) {
-      const char = value[index];
-
-      if (char === '"' || char === "'") {
-        const stringEnd = findCssStringEnd(value, index, char);
-        result += value.slice(index, stringEnd);
-        index = stringEnd;
-        continue;
-      }
-
-      if (char === "#") {
-        CSS_HEX_COLOR.lastIndex = index;
-        const match = CSS_HEX_COLOR.exec(value);
-        if (match) {
-          const hex = match[0].slice(0, end - index);
-          result += isValidColor(hex) ? transform(hex) : hex;
-          index += hex.length;
-          continue;
-        }
-      }
-
-      CSS_IDENTIFIER.lastIndex = index;
-      const identifierMatch = CSS_IDENTIFIER.exec(value);
-      if (identifierMatch && index + identifierMatch[0].length <= end) {
-        const identifier = identifierMatch[0];
-        const functionStart = index + identifier.length;
-        const functionEnd = value[functionStart] === "(" ? closingParentheses[functionStart] : -1;
-        if (functionEnd !== -1 && functionEnd < end) {
-          const functionValue = value.slice(index, functionEnd + 1);
-          // colord, behind isValidColor, only parses rgb() and hsl() functions.
-          if (CSS_COLOR_FUNCTION.test(identifier) && isValidColor(functionValue)) {
-            result += transform(functionValue);
-          } else if (/gradient$/i.test(identifier)) {
-            result += `${identifier}(${transformRange(functionStart + 1, functionEnd)})`;
-          } else {
-            result += functionValue;
-          }
-          index = functionEnd + 1;
-          continue;
-        }
-
-        result += isValidColor(identifier) ? transform(identifier) : identifier;
-        index += identifier.length;
-        continue;
-      }
-
-      result += char;
-      index++;
+    if (char === '"' || char === "'") {
+      const stringEnd = findCssStringEnd(value, index, char);
+      result += value.slice(index, stringEnd);
+      index = stringEnd;
+      continue;
     }
 
-    return result;
-  };
+    if (char === "#") {
+      CSS_HEX_COLOR.lastIndex = index;
+      const match = CSS_HEX_COLOR.exec(value);
+      if (match) {
+        const hex = match[0].slice(0, end - index);
+        result += isValidColor(hex) ? transform(hex) : hex;
+        index += hex.length;
+        continue;
+      }
+    }
 
-  return transformRange(0, value.length);
+    CSS_IDENTIFIER.lastIndex = index;
+    const identifierMatch = CSS_IDENTIFIER.exec(value);
+    if (identifierMatch && index + identifierMatch[0].length <= end) {
+      const identifier = identifierMatch[0];
+      const functionStart = index + identifier.length;
+      const functionEnd = value[functionStart] === "(" ? closingParentheses[functionStart]! : -1;
+      if (functionEnd !== -1 && functionEnd < end) {
+        if (/gradient$/i.test(identifier)) {
+          result += `${identifier}(`;
+          gradientEnds.push(end);
+          end = functionEnd;
+          index = functionStart + 1;
+          continue;
+        }
+        const functionValue = value.slice(index, functionEnd + 1);
+        // colord, behind isValidColor, only parses rgb() and hsl() functions.
+        result +=
+          CSS_COLOR_FUNCTION.test(identifier) && isValidColor(functionValue)
+            ? transform(functionValue)
+            : functionValue;
+        index = functionEnd + 1;
+        continue;
+      }
+
+      result += isValidColor(identifier) ? transform(identifier) : identifier;
+      index += identifier.length;
+      continue;
+    }
+
+    result += char;
+    index++;
+  }
+
+  return result;
 }
 
 // Maps the index of each `(` to the index of the `)` that closes it, or -1, skipping strings.

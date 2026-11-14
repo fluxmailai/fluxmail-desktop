@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   cssString,
+  findCssBlocks,
   findCssImageUrls,
-  findCssUrls,
   hasRemoteCssImage,
   parseSrcset,
   rewriteCssImages,
@@ -12,7 +12,7 @@ import {
 
 describe("CSS image scanning", () => {
   it("finds url() the way the CSS tokenizer does", () => {
-    const urls = (css: string) => findCssUrls(css).map(({ url }) => url);
+    const urls = findCssImageUrls;
 
     expect(urls("a{background:url( https://a.example/x.png )}")).toEqual([
       "https://a.example/x.png",
@@ -66,6 +66,41 @@ describe("CSS image scanning", () => {
     ).toBe(`image-set("x" 1x, image-set("z" 2x) 2x`);
   });
 
+  it("treats tracker URLs in any string as images when asked", () => {
+    expect(
+      rewriteCssImages(
+        `a { --x: "https://t.example/a.gif" 1x; background: image-set(var(--x)); font-family: "Arial" }`,
+        {
+          string: (value) => (value.startsWith("https:") ? cssString("data:,") : undefined),
+        },
+      ),
+    ).toBe(`a { --x: "data:," 1x; background: image-set(var(--x)); font-family: "Arial" }`);
+    expect(
+      hasRemoteCssImage([
+        `a { --x: "https://t.example/a.gif" 1x; background: image-set(var(--x)) }`,
+      ]),
+    ).toBe(true);
+  });
+
+  it("drops candidates from very large image-set()", () => {
+    const css = `image-set("https://t.example/a.gif", ${"a, ".repeat(200_000)}b)`;
+
+    const rewritten = rewriteCssImages(css, {
+      removeImageSetCandidate: (url) => url.includes("t.example"),
+    });
+
+    expect(rewritten.startsWith("image-set(a, a, ")).toBe(true);
+    expect(rewritten).not.toContain("t.example");
+  });
+
+  it("pairs braces as a browser does", () => {
+    const css = `.a { font: 'x;\n} .b { background: url(https://a.example/*/a.png) } @media x { .c { } }`;
+    const blocks = findCssBlocks(css);
+
+    expect(blocks.get(css.indexOf("{", css.indexOf("@media")))).toBe(css.lastIndexOf("}"));
+    expect(blocks.get(css.indexOf("{ background"))).toBe(css.indexOf(") }") + 2);
+  });
+
   it("rewrites deeply nested CSS without recursion", () => {
     const css = 'url("a" '.repeat(50_000);
 
@@ -90,6 +125,7 @@ describe("remote CSS image detection", () => {
     );
     expect(hasRemoteCssImage(["@font-face { src: url(https://a.example/x.woff2) }"])).toBe(false);
     expect(hasRemoteCssImage(["background: url(data:image/png;base64,AAAA)"])).toBe(false);
+    expect(hasRemoteCssImage(["background: url(//a.example/x.png)"])).toBe(true);
     expect(hasRemoteCssImage(["/* background: url(https://a.example/x.png) */"])).toBe(false);
   });
 
