@@ -144,7 +144,7 @@ const EMAIL_TRACKING_PATTERNS = [
   /sailthru\.com\/trk/i,
   /trackapp\.io\/static\/img\/track\.gif/i,
   /trackapp\.io\/[a-z]\//i,
-  /sendibw{2}\.com\/track\//i,
+  /sendib\w{2}\.com\/track\//i,
   /email\.segment\.com\/e\/o\//i,
   /salesloft\.com\/email_trackers/i,
   /salesloftlinks\.com\/t\//i,
@@ -191,6 +191,11 @@ const GENERIC_TRACKING_PATHS = [
   /campaign.*track/i,
   /marketing.*track/i,
 ];
+
+// Several patterns above nest `.*`, so their cost grows with the cube of the input length. A crafted
+// image URL tens of kilobytes long can stall rendering, so only URLs up to this length are matched
+// against the pattern lists. Host and domain checks still run on longer URLs.
+const MAX_PATTERN_INPUT_LENGTH = 2048;
 
 const TRACKING_QUERY_PREFIXES = [
   "email_",
@@ -254,7 +259,10 @@ function trackingReason(source: string, aggressiveHeuristics: boolean): string |
 
   const normalizedSource = source.toLowerCase();
   const hostname = url.hostname.toLowerCase();
-  if (EMAIL_TRACKING_PATTERNS.some((pattern) => pattern.test(normalizedSource)))
+  if (
+    normalizedSource.length <= MAX_PATTERN_INPUT_LENGTH &&
+    EMAIL_TRACKING_PATTERNS.some((pattern) => pattern.test(normalizedSource))
+  )
     return "Known tracking pattern";
   if (TRACKING_DOMAINS.some((domain) => hostnameMatches(hostname, domain)))
     return "Known tracking service";
@@ -266,7 +274,11 @@ function trackingReason(source: string, aggressiveHeuristics: boolean): string |
     return "Known tracking service";
   if (hostname.split(".").some((label) => TRACKING_SUBDOMAIN_LABELS.has(label)))
     return "Tracking subdomain";
-  if (GENERIC_TRACKING_PATHS.some((pattern) => pattern.test(`${url.pathname}${url.search}`)))
+  const pathAndSearch = `${url.pathname}${url.search}`;
+  if (
+    pathAndSearch.length <= MAX_PATTERN_INPUT_LENGTH &&
+    GENERIC_TRACKING_PATHS.some((pattern) => pattern.test(pathAndSearch))
+  )
     return "Tracking URL";
 
   const hasTrackingParameter = [...url.searchParams.keys()].some((key) =>
@@ -291,10 +303,10 @@ function parseSrcsetCandidates(value: string): SrcsetCandidate[] {
 
     const urlStart = position;
     while (position < value.length && !/\s/.test(value[position])) position += 1;
-    let url = value.slice(urlStart, position);
-    const trailingCommas = /,+$/.exec(url)?.[0].length ?? 0;
-    if (trailingCommas) {
-      url = url.slice(0, -trailingCommas);
+    let urlEnd = position;
+    while (urlEnd > urlStart && value[urlEnd - 1] === ",") urlEnd -= 1;
+    const url = value.slice(urlStart, urlEnd);
+    if (urlEnd < position) {
       if (url) candidates.push({ url, descriptor: "" });
       continue;
     }
@@ -391,17 +403,81 @@ function removeTrackingCssUrls(value: string): {
 } {
   const imageSetResult = removeTrackingImageSetCandidates(value);
   const trackingPixels = [...imageSetResult.trackingPixels];
-  const cleaned = imageSetResult.value.replace(
-    /url\(\s*(?:(["'])(.*?)\1|([^\s)]+))\s*\)/gi,
-    (match, _quote: string | undefined, quoted: string | undefined, bare: string | undefined) => {
-      const source = quoted || bare || "";
-      const reason = trackingReason(source, false);
-      if (!reason) return match;
-      trackingPixels.push(trackingPixelDetail(source, reason));
-      return "none";
-    },
-  );
+  const cleaned = replaceCssUrls(imageSetResult.value, (match, source) => {
+    const reason = trackingReason(source, false);
+    if (!reason) return match;
+    trackingPixels.push(trackingPixelDetail(source, reason));
+    return "none";
+  });
   return { value: cleaned, trackingPixels };
+}
+
+// Finds the next match of a global pattern at or after a position, remembering the last answer so
+// repeated lookups from increasing positions scan the string once. Without this, a stylesheet
+// repeating `url("` thousands of times without closing quotes takes quadratic time.
+function nextMatchFinder(value: string, pattern: RegExp): (from: number) => number {
+  let cachedFrom = -1;
+  let cachedIndex = -1;
+  return (from) => {
+    if (cachedFrom >= 0 && from >= cachedFrom && (cachedIndex === -1 || cachedIndex >= from))
+      return cachedIndex;
+    pattern.lastIndex = from;
+    cachedFrom = from;
+    cachedIndex = pattern.exec(value)?.index ?? -1;
+    return cachedIndex;
+  };
+}
+
+// Replaces each `url(...)` in CSS text in linear time. A quoted URL ends at the first matching
+// quote on the same line. An unquoted URL runs until whitespace or `)`.
+function replaceCssUrls(value: string, replace: (match: string, source: string) => string): string {
+  const nextDoubleQuote = nextMatchFinder(value, /"/g);
+  const nextSingleQuote = nextMatchFinder(value, /'/g);
+  const nextLineBreak = nextMatchFinder(value, /[\n\r\u2028\u2029]/g);
+  const nextUnquotedEnd = nextMatchFinder(value, /[\s)]/g);
+  const skipWhitespace = (position: number) => {
+    while (position < value.length && /\s/.test(value[position])) position += 1;
+    return position;
+  };
+
+  const start = /url\(/gi;
+  let result = "";
+  let copiedThrough = 0;
+  let match: RegExpExecArray | null;
+  while ((match = start.exec(value))) {
+    const urlStart = skipWhitespace(start.lastIndex);
+    let source: string | undefined;
+    let end = -1;
+
+    const quote = value[urlStart];
+    if (quote === '"' || quote === "'") {
+      const closeQuote = (quote === '"' ? nextDoubleQuote : nextSingleQuote)(urlStart + 1);
+      const lineBreak = nextLineBreak(urlStart + 1);
+      if (closeQuote !== -1 && (lineBreak === -1 || closeQuote < lineBreak)) {
+        const closeParenthesis = skipWhitespace(closeQuote + 1);
+        if (value[closeParenthesis] === ")") {
+          source = value.slice(urlStart + 1, closeQuote);
+          end = closeParenthesis + 1;
+        }
+      }
+    }
+    if (source === undefined) {
+      const unquotedEnd = nextUnquotedEnd(urlStart);
+      const sourceEnd = unquotedEnd === -1 ? value.length : unquotedEnd;
+      const closeParenthesis = skipWhitespace(sourceEnd);
+      if (sourceEnd > urlStart && value[closeParenthesis] === ")") {
+        source = value.slice(urlStart, sourceEnd);
+        end = closeParenthesis + 1;
+      }
+    }
+    if (source === undefined) continue;
+
+    result +=
+      value.slice(copiedThrough, match.index) + replace(value.slice(match.index, end), source);
+    copiedThrough = end;
+    start.lastIndex = end;
+  }
+  return result + value.slice(copiedThrough);
 }
 
 function removeTrackingImageSetCandidates(value: string): {

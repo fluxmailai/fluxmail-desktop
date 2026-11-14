@@ -517,6 +517,62 @@ describe("email HTML security", () => {
     expect(parsed.documentElement.innerHTML).toContain("https://images.example/content.png");
   });
 
+  it("blocks Sendinblue open trackers", () => {
+    const parsed = new DOMParser().parseFromString(
+      '<img src="https://r.sendibt3.com/track/open?id=1" width="600" height="400">',
+      "text/html",
+    );
+
+    const report = blockTrackingPixels(parsed);
+
+    expect(report.trackingPixels).toEqual([
+      {
+        url: "https://r.sendibt3.com/track/open?id=1",
+        domain: "r.sendibt3.com",
+        reason: "Known tracking pattern",
+      },
+    ]);
+  });
+
+  it("checks crafted long image URLs quickly and still blocks normal trackers", () => {
+    const crafted = `https://images.example/gp/r.html?${"/gp/r.html?".repeat(1200)}${"ref_=pe_".repeat(1200)}`;
+    const longTrackerHost = `https://t.yesware.com/t/${"a".repeat(30_000)}.gif`;
+    const amazonTracker = "https://www.amazon.com/gp/r.html?C=1&ref_=pe_123_open";
+    const parsed = new DOMParser().parseFromString(
+      `${`<img src="${crafted}" srcset="${crafted} 2x">`.repeat(100)}
+       <img src="${longTrackerHost}" width="600" height="400">
+       <img src="${amazonTracker}" width="600" height="400">`,
+      "text/html",
+    );
+
+    const started = performance.now();
+    const report = blockTrackingPixels(parsed);
+
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(report.trackingPixels.map(({ url, reason }) => [url, reason])).toEqual([
+      [longTrackerHost, "Known tracking service"],
+      [amazonTracker, "Known tracking pattern"],
+    ]);
+  });
+
+  it("scans crafted CSS and srcset values in linear time", () => {
+    const parsed = new DOMParser().parseFromString(
+      `<style>${'url("'.repeat(40_000)}${"url(".repeat(40_000)}
+         .tracked { background: url("https://t.yesware.com/t/message-1.gif"); }</style>
+       <img src="https://images.example/content.png" srcset="a${",".repeat(50_000)}b 2x"
+         width="600" height="400">`,
+      "text/html",
+    );
+
+    const started = performance.now();
+    const report = blockTrackingPixels(parsed);
+
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(report.trackingPixels.map(({ url }) => url)).toEqual([
+      "https://t.yesware.com/t/message-1.gif",
+    ]);
+  });
+
   it("keeps legitimate content in CSS, legacy backgrounds, and picture sources", () => {
     const parsed = new DOMParser().parseFromString(
       `<style>.hero { background-image: url(https://track.example.com/campaign-hero.jpg); }</style>
