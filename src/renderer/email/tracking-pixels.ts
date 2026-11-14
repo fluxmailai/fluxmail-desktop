@@ -1,4 +1,11 @@
-import { findCssUrls, replaceCssUrls } from "./css-urls";
+import {
+  cssString,
+  parseRemoteImageUrl,
+  parseSrcset,
+  rewriteCssImages,
+  serializeSrcset,
+  type SrcsetCandidate,
+} from "./css-urls";
 
 export interface TrackingPixelReport {
   totalImages: number;
@@ -311,15 +318,6 @@ function hostnameMatches(hostname: string, domain: string): boolean {
   return hostname === domain || hostname.endsWith(`.${domain}`);
 }
 
-function parseRemoteUrl(source: string): URL | undefined {
-  try {
-    const url = new URL(source);
-    return url.protocol === "http:" || url.protocol === "https:" ? url : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 function isAllowlisted(url: URL): boolean {
   return ALLOWLIST.some(
     (rule) =>
@@ -329,7 +327,7 @@ function isAllowlisted(url: URL): boolean {
 }
 
 function trackingReason(source: string, aggressiveHeuristics: boolean): string | undefined {
-  const url = parseRemoteUrl(source);
+  const url = parseRemoteImageUrl(source);
   if (!url || isAllowlisted(url)) return undefined;
 
   // Match the parsed URL, which drops the tabs and newlines a browser ignores when it loads one.
@@ -357,57 +355,13 @@ function trackingReason(source: string, aggressiveHeuristics: boolean): string |
     : undefined;
 }
 
-interface SrcsetCandidate {
-  url: string;
-  descriptor: string;
-}
-
-function parseSrcsetCandidates(value: string): SrcsetCandidate[] {
-  const candidates: SrcsetCandidate[] = [];
-  let position = 0;
-  while (position < value.length) {
-    while (/[\s,]/.test(value[position] || "")) position += 1;
-    if (position >= value.length) break;
-
-    const urlStart = position;
-    while (position < value.length && !/\s/.test(value[position])) position += 1;
-    let urlEnd = position;
-    while (urlEnd > urlStart && value[urlEnd - 1] === ",") urlEnd -= 1;
-    const url = value.slice(urlStart, urlEnd);
-    if (urlEnd < position) {
-      if (url) candidates.push({ url, descriptor: "" });
-      continue;
-    }
-
-    while (/\s/.test(value[position] || "")) position += 1;
-    const descriptorStart = position;
-    let parentheses = 0;
-    while (position < value.length) {
-      const character = value[position];
-      if (character === "(") parentheses += 1;
-      else if (character === ")") parentheses = Math.max(0, parentheses - 1);
-      else if (character === "," && parentheses === 0) break;
-      position += 1;
-    }
-    candidates.push({ url, descriptor: value.slice(descriptorStart, position).trim() });
-    if (value[position] === ",") position += 1;
-  }
-  return candidates;
-}
-
-function serializeSrcsetCandidates(candidates: SrcsetCandidate[]): string {
-  return candidates
-    .map(({ url, descriptor }) => (descriptor ? `${url} ${descriptor}` : url))
-    .join(", ");
-}
-
 function filterTrackingSrcset(
   value: string,
   aggressiveHeuristics: boolean,
 ): { candidates: SrcsetCandidate[]; trackingPixels: TrackingPixelDetail[] } {
   const candidates: SrcsetCandidate[] = [];
   const trackingPixels: TrackingPixelDetail[] = [];
-  for (const candidate of parseSrcsetCandidates(value)) {
+  for (const candidate of parseSrcset(value)) {
     const reason = trackingReason(candidate.url, aggressiveHeuristics);
     if (reason) trackingPixels.push(trackingPixelDetail(candidate.url, reason));
     else candidates.push(candidate);
@@ -457,117 +411,31 @@ function imageSources(image: HTMLImageElement): string[] {
   const source = image.getAttribute("src");
   return [
     source || "",
-    ...parseSrcsetCandidates(image.getAttribute("srcset") || "").map(({ url }) => url),
+    ...parseSrcset(image.getAttribute("srcset") || "").map(({ url }) => url),
   ].filter(Boolean);
 }
 
 function trackingPixelDetail(source: string, reason: string): TrackingPixelDetail {
-  return { url: source, domain: parseRemoteUrl(source)?.hostname || "Unknown domain", reason };
+  return { url: source, domain: parseRemoteImageUrl(source)?.hostname || "Unknown domain", reason };
 }
 
 function removeTrackingCssUrls(value: string): {
   value: string;
   trackingPixels: TrackingPixelDetail[];
 } {
-  const imageSetResult = removeTrackingImageSetCandidates(value);
-  const trackingPixels = [...imageSetResult.trackingPixels];
-  const cleaned = replaceCssUrls(imageSetResult.value, ({ url: source }, match) => {
+  const trackingPixels: TrackingPixelDetail[] = [];
+  const isTracker = (source: string) => {
     const reason = trackingReason(source, false);
-    if (!reason) return match;
-    trackingPixels.push(trackingPixelDetail(source, reason));
-    return "none";
+    if (reason) trackingPixels.push(trackingPixelDetail(source, reason));
+    return reason !== undefined;
+  };
+  const cleaned = rewriteCssImages(value, {
+    removeImageSetCandidate: isTracker,
+    url: (source) => (isTracker(source) ? "none" : undefined),
+    // A tracker URL in a plain string can still load, through image-set(var(--x)) for example.
+    string: (source) => (isTracker(source) ? cssString("data:,") : undefined),
   });
   return { value: cleaned, trackingPixels };
-}
-
-function removeTrackingImageSetCandidates(value: string): {
-  value: string;
-  trackingPixels: TrackingPixelDetail[];
-} {
-  const trackingPixels: TrackingPixelDetail[] = [];
-  const pattern = /(?:-webkit-)?image-set\s*\(/gi;
-  let result = "";
-  let copiedThrough = 0;
-  let match: RegExpExecArray | null;
-  while ((match = pattern.exec(value))) {
-    const openParenthesis = pattern.lastIndex - 1;
-    const closeParenthesis = findClosingParenthesis(value, openParenthesis);
-    if (closeParenthesis === undefined) break;
-
-    const candidates = splitCssFunctionArguments(
-      value.slice(openParenthesis + 1, closeParenthesis),
-    );
-    const safeCandidates = candidates.filter((candidate) => {
-      const source = cssImageCandidateUrl(candidate);
-      const reason = source ? trackingReason(source, false) : undefined;
-      if (!source || !reason) return true;
-      trackingPixels.push(trackingPixelDetail(source, reason));
-      return false;
-    });
-    if (safeCandidates.length === candidates.length) {
-      pattern.lastIndex = closeParenthesis + 1;
-      continue;
-    }
-
-    result += value.slice(copiedThrough, match.index);
-    result += safeCandidates.length
-      ? `${value.slice(match.index, openParenthesis + 1)}${safeCandidates.join(", ")})`
-      : "none";
-    copiedThrough = closeParenthesis + 1;
-    pattern.lastIndex = copiedThrough;
-  }
-  return { value: result + value.slice(copiedThrough), trackingPixels };
-}
-
-function findClosingParenthesis(value: string, openParenthesis: number): number | undefined {
-  let depth = 1;
-  let quote = "";
-  for (let position = openParenthesis + 1; position < value.length; position += 1) {
-    const character = value[position];
-    if (quote) {
-      if (character === "\\") position += 1;
-      else if (character === quote) quote = "";
-      continue;
-    }
-    if (character === '"' || character === "'") quote = character;
-    else if (character === "(") depth += 1;
-    else if (character === ")") {
-      depth -= 1;
-      if (depth === 0) return position;
-    }
-  }
-  return undefined;
-}
-
-function splitCssFunctionArguments(value: string): string[] {
-  const candidates: string[] = [];
-  let start = 0;
-  let depth = 0;
-  let quote = "";
-  for (let position = 0; position < value.length; position += 1) {
-    const character = value[position];
-    if (quote) {
-      if (character === "\\") position += 1;
-      else if (character === quote) quote = "";
-      continue;
-    }
-    if (character === '"' || character === "'") quote = character;
-    else if (character === "(") depth += 1;
-    else if (character === ")") depth = Math.max(0, depth - 1);
-    else if (character === "," && depth === 0) {
-      candidates.push(value.slice(start, position).trim());
-      start = position + 1;
-    }
-  }
-  candidates.push(value.slice(start).trim());
-  return candidates.filter(Boolean);
-}
-
-function cssImageCandidateUrl(candidate: string): string | undefined {
-  const stringMatch = /^(["'])(.*?)\1/.exec(candidate);
-  if (stringMatch) return stringMatch[2];
-  const [url] = findCssUrls(candidate);
-  return url?.start === 0 ? url.url : undefined;
 }
 
 export function blockTrackingPixels(document: Document): TrackingPixelReport {
@@ -581,9 +449,9 @@ export function blockTrackingPixels(document: Document): TrackingPixelReport {
     const source = image.getAttribute("src") || "";
     const sourceReason = trackingReason(source, !likelyContent);
     const srcsetResult = filterTrackingSrcset(image.getAttribute("srcset") || "", !likelyContent);
-    const remoteSources = imageSources(image).filter((candidate) => parseRemoteUrl(candidate));
+    const remoteSources = imageSources(image).filter((candidate) => parseRemoteImageUrl(candidate));
     const hasNonAllowlistedRemoteSource = remoteSources.some((candidate) => {
-      const url = parseRemoteUrl(candidate);
+      const url = parseRemoteImageUrl(candidate);
       return url !== undefined && !isAllowlisted(url);
     });
     const structuralReason = hasNonAllowlistedRemoteSource
@@ -602,7 +470,7 @@ export function blockTrackingPixels(document: Document): TrackingPixelReport {
     for (const detail of srcsetResult.trackingPixels) record(detail);
     if (srcsetResult.trackingPixels.length) {
       if (srcsetResult.candidates.length)
-        image.setAttribute("srcset", serializeSrcsetCandidates(srcsetResult.candidates));
+        image.setAttribute("srcset", serializeSrcset(srcsetResult.candidates));
       else image.removeAttribute("srcset");
     }
 
@@ -616,7 +484,7 @@ export function blockTrackingPixels(document: Document): TrackingPixelReport {
     for (const detail of result.trackingPixels) record(detail);
     if (!result.trackingPixels.length) allowedCount += result.candidates.length;
     else if (result.candidates.length) {
-      source.setAttribute("srcset", serializeSrcsetCandidates(result.candidates));
+      source.setAttribute("srcset", serializeSrcset(result.candidates));
       allowedCount += result.candidates.length;
     } else source.remove();
   }
