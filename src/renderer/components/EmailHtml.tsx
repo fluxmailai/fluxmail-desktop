@@ -14,6 +14,7 @@ import {
   QUOTED_HISTORY_ATTRIBUTE,
   splitQuotedText,
 } from "../email/quoted-reply";
+import { hasRemoteCssImage } from "../email/css-urls";
 import { collectRemoteImageUrls, rewriteRemoteImageUrls } from "../email/remote-images";
 import { blockTrackingPixels, type TrackingPixelDetail } from "../email/tracking-pixels";
 import { IconButton } from "./Controls";
@@ -923,79 +924,4 @@ export function hasRemoteImages(value: string): boolean {
     ...[...document.querySelectorAll("style")].map((style) => style.textContent || ""),
   ];
   return imageAttributes.some((source) => /https?:\/\//i.test(source)) || hasRemoteCssImage(css);
-}
-
-const CSS_IMAGE_DECLARATION =
-  /(?:^|[;{])\s*(?:background(?:-image)?|border-image(?:-source)?|content|cursor|list-style(?:-image)?|mask(?:-image)?|-webkit-mask(?:-image)?|shape-outside)\s*:\s*([^;}]+)/gi;
-const CSS_CUSTOM_PROPERTY = /(?:^|[;{])\s*(--[-\w]+)\s*:\s*([^;}]+)/gi;
-// Email CSS is untrusted, so these checks avoid expressions that rescan the rest of the text from
-// every match, which let a crafted stylesheet freeze the app when a message opened.
-const REMOTE_CSS_URL = /url\(\s*(?:["']\s*)?https?:\/\//i;
-const REMOTE_URL_STRING = /["']\s*https?:\/\//i;
-
-// True when an `image-set(` has a quoted remote URL before the next `)`. Every `image-set(` before
-// the same `)` sees a part of the first one's text, so only the first needs checking.
-function hasRemoteImageSetString(value: string): boolean {
-  const start = /image-set\(/gi;
-  while (start.exec(value)) {
-    const close = value.indexOf(")", start.lastIndex);
-    const end = close === -1 ? value.length : close;
-    if (REMOTE_URL_STRING.test(value.slice(start.lastIndex, end))) return true;
-    if (close === -1) return false;
-    start.lastIndex = close + 1;
-  }
-  return false;
-}
-
-// Removes closed `/* */` comments, as /\/\*[\s\S]*?\*\//g does, in linear time.
-function stripCssComments(value: string): string {
-  let result = "";
-  let copiedThrough = 0;
-  for (;;) {
-    const open = value.indexOf("/*", copiedThrough);
-    const close = open === -1 ? -1 : value.indexOf("*/", open + 2);
-    if (close === -1) return result + value.slice(copiedThrough);
-    result += value.slice(copiedThrough, open);
-    copiedThrough = close + 2;
-  }
-}
-
-// A custom property can reference others through var(), so a declaration shows a remote image
-// when it contains one or references a property that leads to one. Following references from
-// each declaration takes exponential time on a crafted chain of properties that each reference the
-// next twice, so this finds every property that leads to a remote image in one pass instead.
-function hasRemoteCssImage(values: string[]): boolean {
-  const css = stripCssComments(values.join("\n"));
-  const referrers = new Map<string, Set<string>>();
-  const remoteProperties = new Set<string>();
-  const pending: string[] = [];
-  const markRemote = (property: string) => {
-    if (remoteProperties.has(property)) return;
-    remoteProperties.add(property);
-    pending.push(property);
-  };
-  for (const [, property, definition] of css.matchAll(CSS_CUSTOM_PROPERTY)) {
-    if (cssValueHasRemoteImage(definition)) markRemote(property);
-    for (const referenced of referencedCustomProperties(definition)) {
-      const propertyReferrers = referrers.get(referenced) ?? new Set<string>();
-      propertyReferrers.add(property);
-      referrers.set(referenced, propertyReferrers);
-    }
-  }
-  for (let property = pending.pop(); property !== undefined; property = pending.pop())
-    for (const referrer of referrers.get(property) ?? []) markRemote(referrer);
-
-  return [...css.matchAll(CSS_IMAGE_DECLARATION)].some(
-    ([, value]) =>
-      cssValueHasRemoteImage(value) ||
-      referencedCustomProperties(value).some((property) => remoteProperties.has(property)),
-  );
-}
-
-function cssValueHasRemoteImage(value: string): boolean {
-  return REMOTE_CSS_URL.test(value) || hasRemoteImageSetString(value);
-}
-
-function referencedCustomProperties(value: string): string[] {
-  return [...value.matchAll(/var\(\s*(--[-\w]+)/gi)].map((match) => match[1]);
 }

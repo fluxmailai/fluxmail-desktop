@@ -679,6 +679,137 @@ describe("email HTML security", () => {
     expect(performance.now() - started).toBeLessThan(5_000);
   });
 
+  it("renders crafted stylesheets in dark mode without stalling", { timeout: 60_000 }, () => {
+    const repeated = [
+      "image-set(",
+      "url(",
+      "/*",
+      ";color:lab(",
+      "background-color:lab(",
+      "border-color:lab(",
+      "-",
+      " ",
+      "var(--a, red ",
+      "linear-gradient(",
+      "rgb(",
+      ":where(",
+      ":is(",
+      "[",
+      "<style",
+      "body,p,td,tr,.body,table,h1,div,span{",
+      "@media (prefers-color-scheme: dark) {",
+    ];
+    for (const part of repeated) {
+      const crafted = part.repeat(Math.ceil(60_000 / part.length));
+      const attribute = crafted.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+      const html = `<style>.a{background:${crafted}}</style>
+        <style>.a{color:red}${crafted}{color:red}</style>
+        <div class="a" style="background:${attribute}" title="${attribute}">Text</div>
+        <div style="color:${attribute}">${crafted.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</div>`;
+
+      // Before these fixes, 15,000 image-set( took 1.6 seconds and some of these took minutes.
+      const started = performance.now();
+      const document = buildEmailDocument(html, {}, false, true);
+      expect(performance.now() - started, part).toBeLessThan(3_000);
+      expect(document, part).toContain("Text");
+    }
+  });
+
+  it("keeps dark mode CSS cleanup working on the linear matchers", () => {
+    const document = buildEmailDocument(
+      `<style>body, p, td, tr, .body, table, h1, div, span { background-color: #FEFEFE !important; }</style>
+       <style>@media (prefers-color-scheme: dark) { @supports (color: red) { p { color: white; } } }
+         .keep { border: 1px solid #ffffff; } .fallback { color: var(--text, #000000   ) }</style>
+       <p class="keep" style="color: lab(10% 0 0) ; background: linear-gradient(white, linear-gradient(black, white))">Hello</p>
+       <p class="fallback">Fallback</p>`,
+      {},
+      false,
+      true,
+    );
+
+    expect(document).not.toContain("#FEFEFE");
+    expect(document).not.toContain("prefers-color-scheme");
+    expect(document).not.toContain("color: white");
+    expect(document).toContain(".keep");
+    expect(document).not.toContain("lab(");
+    expect(document).not.toMatch(/linear-gradient\(white/);
+    expect(document).toMatch(/\.fallback \{ color: var\(--text, #(?!000000)[0-9a-f]{6} {3}\)/i);
+  });
+
+  it("decodes CSS escapes before checking stylesheet URLs", () => {
+    const trackers = [
+      'url("\\68ttps://t.yesware.com/t/a.gif")',
+      "url(\\68ttps://t.yesware.com/t/b.gif)",
+      "u\\72 l(https://t.yesware.com/t/c.gif)",
+      "\\75rl('https://t.yesware.com/t/d.gif')",
+      "URL(https://t.yesware.com/t/e.gif)",
+      'image-s\\65t("https://t.yesware.com/t/f\\2e gif" 1x)',
+    ];
+    const html = `<style>${trackers.map((url, index) => `.t${index} { background: ${url}; }`).join("\n")}</style>`;
+    const parsed = new DOMParser().parseFromString(html, "text/html");
+
+    const report = blockTrackingPixels(parsed);
+
+    expect(report.trackingPixels.map(({ url }) => url)).toEqual(
+      ["a.gif", "b.gif", "c.gif", "d.gif", "e.gif", "f.gif"].map(
+        (file) => `https://t.yesware.com/t/${file}`,
+      ),
+    );
+    expect(parsed.querySelector("style")?.textContent).not.toContain("yesware");
+  });
+
+  it("blocks url() trackers with request modifiers", () => {
+    const parsed = new DOMParser().parseFromString(
+      `<style>
+        .a { background: url("https://t.yesware.com/t/a.gif" crossorigin(anonymous)); }
+        .b { background: url('https://t.yesware.com/t/b.gif' referrerpolicy(no-referrer) integrity("sha384-x")); }
+        .c { background: image-set(url("https://t.yesware.com/t/c.gif" crossorigin(use-credentials)) 1x, "https://images.example/c.png" 2x); }
+      </style>`,
+      "text/html",
+    );
+
+    const report = blockTrackingPixels(parsed);
+
+    expect(report.blockedCount).toBe(3);
+    const css = parsed.querySelector("style")?.textContent;
+    expect(css).not.toContain("yesware");
+    expect(css).toContain('image-set("https://images.example/c.png" 2x)');
+  });
+
+  it("keeps scanning after url( or image-set( in comments and strings", () => {
+    const parsed = new DOMParser().parseFromString(
+      `<style>/* image-set( */ .a { background: image-set("https://t.yesware.com/t/a.gif" 1x); }</style>
+       <style>.b { content: "image-set("; background: image-set("https://t.yesware.com/t/b.gif" 1x); }</style>
+       <style>.c { content: "url("; background: url(https://t.yesware.com/t/c.gif); content: ")"; }</style>
+       <style>.d { content: "url(
+         ; background: url(https://t.yesware.com/t/d.gif); }</style>
+       <style>.e { content: 'url("'; background: url(https://t.yesware.com/t/e.gif); content: '")'; }</style>`,
+      "text/html",
+    );
+
+    const report = blockTrackingPixels(parsed);
+
+    expect(report.trackingPixels.map(({ url }) => url)).toEqual(
+      ["a", "b", "c", "d", "e"].map((file) => `https://t.yesware.com/t/${file}.gif`),
+    );
+    for (const style of parsed.querySelectorAll("style"))
+      expect(style.textContent).not.toContain("yesware");
+  });
+
+  it("blocks the same crafted stylesheet trackers when images load directly", () => {
+    const document = buildEmailDocument(
+      `<style>.a { background: u\\72 l("\\68ttps://t.yesware.com/t/a.gif" crossorigin(anonymous)); }
+        .b { content: "image-set("; background: image-set("https://t.yesware.com/t/b.gif" 1x); }</style>
+       <p class="a b">Hello</p>`,
+      {},
+      true,
+    );
+
+    expect(document).toContain("img-src data: blob: https:");
+    expect(document).not.toContain("yesware");
+    expect(document).not.toContain("\\68ttps");
+  });
+
   it("keeps legitimate content in CSS, legacy backgrounds, and picture sources", () => {
     const parsed = new DOMParser().parseFromString(
       `<style>.hero { background-image: url(https://track.example.com/campaign-hero.jpg); }</style>
