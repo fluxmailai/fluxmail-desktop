@@ -104,11 +104,27 @@ const TRACKING_HOST_PATTERNS = [
 ];
 
 // Image URLs in email are untrusted and unbounded, so every pattern must run in linear time. A
-// pattern is a regular expression, a list of expressions that must match in order (each after the
-// end of the previous match), or a function. Lists replace `a.*b`, which backtracks over the rest
-// of the URL from every match of `a`: a crafted 23 KB URL made one check take seconds. Functions
-// replace the two expressions that backtracked from every occurrence of their prefix.
-type TrackingPattern = RegExp | readonly RegExp[] | ((value: string) => boolean);
+// pattern is a regular expression or a function. `inOrder(a, b)` replaces `a.*b`, which
+// backtracks over the rest of the URL from every match of `a`: a crafted 23 KB URL made one check
+// take seconds. Two hand-written functions replace expressions that backtracked from every
+// occurrence of their prefix. EMAIL_TRACKING_PATTERNS receive the lowercased URL.
+type TrackingPattern = RegExp | ((value: string) => boolean);
+
+// Matches when each expression matches after the end of the previous one's first match, which is
+// what `a.*b.*c` matches when every part but the last is a fixed string, as in every use below.
+function inOrder(...parts: RegExp[]): (value: string) => boolean {
+  const globalParts = parts.map((part) => new RegExp(part.source, `${part.flags}g`));
+  return (value) => {
+    let position = 0;
+    for (const part of globalParts) {
+      part.lastIndex = position;
+      const match = part.exec(value);
+      if (!match) return false;
+      position = match.index + match[0].length;
+    }
+    return true;
+  };
+}
 
 const EMAIL_TRACKING_PATTERNS: TrackingPattern[] = [
   /\/track\/open\.php\?u=/i,
@@ -120,9 +136,9 @@ const EMAIL_TRACKING_PATTERNS: TrackingPattern[] = [
   hasBase64OpenPath,
   /mixmax\.com\/api\/track\//i,
   /mixmax\.com\/e\/o/i,
-  [/\/\/tracking/i, /\/api\/track\/v2\//i],
+  inOrder(/\/\/tracking/i, /\/api\/track\/v2\//i),
   /contactmonkey\.com\/api\/v1\/tracker/i,
-  [/\/\//, /\.convertkit-mail[1-9]?\.com\/o\//i],
+  inOrder(/\/\//, /\.convertkit-mail[1-9]?\.com\/o\//i),
   /polymail\.io(\/v2\/z\/)?/i,
   /share\.polymail\.io/i,
   /yamm-track\.appspot/i,
@@ -134,21 +150,21 @@ const EMAIL_TRACKING_PATTERNS: TrackingPattern[] = [
   /\/trk\?t=/i,
   /returnpath\.net\/pixel\.gif/i,
   /(outrch|whosen|getoutreach)\.com\/api\/mailings\/opened/i,
-  [/\/\//, /\.intercom-\w+\.com(?:\/via)?\//i],
-  [/\/\/links\./i, /\/oo\//i],
+  inOrder(/\/\//, /\.intercom-\w+\.com(?:\/via)?\//i),
+  inOrder(/\/\/links\./i, /\/oo\//i),
   /\.mjt\.lu\//i,
-  [/\/oo\//i, /\.gif/i],
+  inOrder(/\/oo\//i, /\.gif/i),
   /nethunt\.com\/api\/v1\/track\/email\//i,
   /apple\.com\/report\/2\/its_mail_sf/i,
   /\/o\/\w{10}\/\w{10}\//i,
-  [/lt\.php/i, /\?l=open/i],
+  inOrder(/lt\.php/i, /\?l=open/i),
   /email81\.com\/case/i,
   /growthdot\.com\/api\/mail-tracking/i,
   /\/e2t\/(o|c|to)\//i,
   /getmailspring\.com\/open/i,
   /mixpanel\.com\/(trk|track)/i,
   /go\.sparkpostmail2\.com\/q\//i,
-  [/\/\/click\./i, /\/open\.aspx/i],
+  inOrder(/\/\/click\./i, /\/open\.aspx/i),
   /infinite-stream-5194\.herokuapp\.com\/pixel\//i,
   /sailthru\.com\/trk/i,
   /trackapp\.io\/static\/img\/track\.gif/i,
@@ -161,9 +177,9 @@ const EMAIL_TRACKING_PATTERNS: TrackingPattern[] = [
   /\/tools\/emails\/open\//i,
   /\/\w*I0\/\w{16}-\w{8}-\w{4}/i,
   /\/open\/\d{3}\/\w{10}/i,
-  [/\/\//, /\.enewsletter\.pl\//i, /\.gif/i],
+  inOrder(/\/\//, /\.enewsletter\.pl\//i, /\.gif/i),
   /\/optiext\/optiextension\.dll\?ID=/i,
-  [/\/\/mx\.technolutions\.net\/ss\/o\//i, /\/ho\.gif/i],
+  inOrder(/\/\/mx\.technolutions\.net\/ss\/o\//i, /\/ho\.gif/i),
   /\/\/tracking\.vocus\.io\//i,
   /\/tr\/op\//i,
   /\/m\/opening\//i,
@@ -174,7 +190,7 @@ const EMAIL_TRACKING_PATTERNS: TrackingPattern[] = [
   /\/tf\/o\//i,
   /\/via\/o\?h=/i,
   /\/eos\/v1\//i,
-  [/\/gp\/r\.html\?/i, /ref_=pe_/i, /_open/i],
+  inOrder(/\/gp\/r\.html\?/i, /ref_=pe_/i, /_open/i),
   /\/pub\/as\?_ri_=/i,
   /\/q\/[^/]+~~\//i,
   /\/s\/eo\//i,
@@ -186,7 +202,7 @@ const EMAIL_TRACKING_PATTERNS: TrackingPattern[] = [
   /t\.paypal\.com\/ts\?v=/i,
   /click\.emails\.paypal\.com/i,
   /cdn\.shopify\.com\/shopifycloud\/shopify\/assets\/themes_support\/notifications\/spacer-/i,
-  [/link\.mail\.beehiiv\.com\/ss\//i, /\.gif/i],
+  inOrder(/link\.mail\.beehiiv\.com\/ss\//i, /\.gif/i),
   /line\.my\.salesforce\.com\/servlet\/servlet\.ImageServer\?/i,
   hasEmailOpenPath,
 ];
@@ -194,11 +210,11 @@ const EMAIL_TRACKING_PATTERNS: TrackingPattern[] = [
 const GENERIC_TRACKING_PATHS: TrackingPattern[] = [
   /\/(?:track|pixel|open|beacon|counter|analytics|stats|metrics|monitor)(?:[./?_-]|$)/i,
   /\/e\/o(?:[/?#]|$)/i,
-  [/email/i, /track/i],
-  [/track/i, /email/i],
-  [/newsletter/i, /track/i],
-  [/campaign/i, /track/i],
-  [/marketing/i, /track/i],
+  inOrder(/email/i, /track/i),
+  inOrder(/track/i, /email/i),
+  inOrder(/newsletter/i, /track/i),
+  inOrder(/campaign/i, /track/i),
+  inOrder(/marketing/i, /track/i),
 ];
 
 const BASE64_CHARACTER = /[0-9a-z+/]/i;
@@ -206,9 +222,9 @@ const BASE64_CHARACTER = /[0-9a-z+/]/i;
 // Matches what /\/e\/o\/(?:[0-9a-z+/]{4})+(?:[0-9a-z+/]{2}==|[0-9a-z+/]{3}=)?(?:[/?#]|$)/i
 // matches: `/e/o/`, whole groups of four base64 characters with optional padding, then `/`, `?`,
 // `#` or the end. Because `/` is a base64 character, the expression can end at any `/` a multiple
-// of four characters into the run. Each run of base64 characters is scanned once.
-export function hasBase64OpenPath(value: string): boolean {
-  const text = value.toLowerCase();
+// of four characters into the run. Each run of base64 characters is scanned once. Expects a
+// lowercased value.
+export function hasBase64OpenPath(text: string): boolean {
   const ends = (position: number) => position === text.length || "/?#".includes(text[position]!);
   let marker = text.indexOf("/e/o/");
   while (marker !== -1) {
@@ -234,9 +250,9 @@ export function hasBase64OpenPath(value: string): boolean {
 
 // Matches what /email\.[^/]+\.com\/o(?:[/?#]|$)/i matches: a path segment that contains
 // `email.` and ends in `.com` with at least one character between them, followed by `/o` and then
-// `/`, `?`, `#` or the end.
+// `/`, `?`, `#` or the end. Expects a lowercased value.
 export function hasEmailOpenPath(value: string): boolean {
-  const segments = value.toLowerCase().split("/");
+  const segments = value.split("/");
   return segments.some((segment, index) => {
     const marker = segment.indexOf("email.");
     const next = segments[index + 1];
@@ -285,20 +301,10 @@ const ALLOWLIST = [
   },
 ];
 
-function matchesPattern(value: string, pattern: TrackingPattern): boolean {
-  if (pattern instanceof RegExp) return pattern.test(value);
-  if (typeof pattern === "function") return pattern(value);
-  let position = 0;
-  for (const part of pattern) {
-    const match = part.exec(value.slice(position));
-    if (!match) return false;
-    position += match.index + match[0].length;
-  }
-  return true;
-}
-
 function matchesAnyPattern(value: string, patterns: TrackingPattern[]): boolean {
-  return patterns.some((pattern) => matchesPattern(value, pattern));
+  return patterns.some((pattern) =>
+    pattern instanceof RegExp ? pattern.test(value) : pattern(value),
+  );
 }
 
 function hostnameMatches(hostname: string, domain: string): boolean {

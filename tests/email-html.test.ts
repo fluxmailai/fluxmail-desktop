@@ -598,8 +598,8 @@ describe("email HTML security", () => {
       const value = Array.from({ length: random(14) }, () => pieces[random(pieces.length)]).join(
         "",
       );
-      expect(hasBase64OpenPath(value), value).toBe(base64.test(value));
-      expect(hasEmailOpenPath(value), value).toBe(email.test(value));
+      expect(hasBase64OpenPath(value.toLowerCase()), value).toBe(base64.test(value));
+      expect(hasEmailOpenPath(value.toLowerCase()), value).toBe(email.test(value));
     }
   });
 

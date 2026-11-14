@@ -10,6 +10,7 @@ export interface CssUrl {
 }
 
 const CSS_WHITESPACE = new Set([" ", "\t", "\n", "\r", "\f"]);
+const NEWLINES = new Set(["\n", "\r", "\f"]);
 
 /**
  * Finds every `url(...)` in CSS text, following the CSS tokenizer closely enough to see what a
@@ -19,8 +20,8 @@ const CSS_WHITESPACE = new Set([" ", "\t", "\n", "\r", "\f"]);
  *
  * A quoted URL ends at the next unescaped matching quote, and may be followed by whitespace and
  * comments before `)`. An unquoted URL ends at `)` or at whitespace followed by `)`, and is invalid
- * if it contains an unescaped quote or `(`. The end of the text closes an open string or url(). Scanning resumes at the next `url(` after an invalid
- * one, so an inner `url(` is still found.
+ * if it contains an unescaped quote or `(`. The end of the text closes an open string or url().
+ * Scanning resumes at the next `url(` after an invalid one, so an inner `url(` is still found.
  */
 export function findCssUrls(value: string): CssUrl[] {
   const urls: CssUrl[] = [];
@@ -94,15 +95,16 @@ export function replaceCssUrls(value: string, replace: (url: CssUrl, match: stri
 }
 
 // Returns the index of the quote that closes the string opening at `openQuote`, the end of the
-// text if that comes first, or undefined when an unescaped newline makes the string invalid. The scan stops at the next unescaped quote of the
-// same kind, so scans from different `url("` never cover the same text twice.
+// text if that comes first, or undefined when an unescaped newline makes the string invalid. The
+// scan stops at the next unescaped quote of the same kind, so scans from different `url("` never
+// cover the same text twice.
 function closingQuote(value: string, openQuote: number): number | undefined {
   const quote = value[openQuote];
   for (let position = openQuote + 1; position < value.length; position += 1) {
     const character = value[position];
     if (character === "\\") position += 1;
     else if (character === quote) return position;
-    else if (character === "\n" || character === "\r" || character === "\f") return undefined;
+    else if (NEWLINES.has(character)) return undefined;
   }
   return value.length;
 }
@@ -112,8 +114,11 @@ function closingQuote(value: string, openQuote: number): number | undefined {
 function unquotedUrlEnd(value: string, from: number): number | undefined {
   for (let position = from; position < value.length; position += 1) {
     const character = value[position]!;
-    if (character === "\\") position += 1;
-    else if (character === ")" || CSS_WHITESPACE.has(character)) return position;
+    if (character === "\\") {
+      // A backslash before a newline is not a valid escape, which makes the url() invalid.
+      if (NEWLINES.has(value[position + 1]!)) return undefined;
+      position += 1;
+    } else if (character === ")" || CSS_WHITESPACE.has(character)) return position;
     else if (character === '"' || character === "'" || character === "(") return undefined;
   }
   return value.length;
