@@ -1,8 +1,7 @@
 import { normalizeRemoteImageUrl } from "../../shared/image-relay";
+import { findCssUrls, replaceCssUrls } from "./css-urls";
 import { blockTrackingPixels } from "./tracking-pixels";
 
-const CSS_URL_REGEX =
-  /url\(\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|((?:\\.|[^'")])+?))\s*\)/gi;
 const CSS_IMAGE_SET_REGEX = /(?:-webkit-)?image-set\s*\(/gi;
 
 interface SrcsetEntry {
@@ -85,10 +84,7 @@ export function rewriteRemoteImageUrls(
 
 function cssImageUrls(value: string): string[] {
   const urls: string[] = [];
-  for (const match of value.matchAll(CSS_URL_REGEX)) {
-    const url = match[1] ?? match[2] ?? match[3];
-    if (url?.trim()) urls.push(url.trim());
-  }
+  for (const { url } of findCssUrls(value)) if (url.trim()) urls.push(url.trim());
   transformImageSetCandidates(value, (candidate) => {
     const source = parseImageSetString(candidate)?.value.trim();
     if (source) urls.push(source);
@@ -104,17 +100,12 @@ function rewriteCss(value: string, replace: (url: string) => string | undefined)
     const proxied = replace(source.value.trim()) ?? "data:,";
     return `${candidate.slice(0, source.start)}${source.quote}${proxied}${source.quote}${candidate.slice(source.end)}`;
   });
-  return imageSetsRewritten.replace(
-    CSS_URL_REGEX,
-    (match, doubleQuoted, singleQuoted, unquoted) => {
-      const url = doubleQuoted ?? singleQuoted ?? unquoted;
-      if (typeof url !== "string" || !normalizeRemoteImageUrl(url.trim())) return match;
-      const proxied = replace(url.trim());
-      if (!proxied) return 'url("data:,")';
-      const quote = doubleQuoted !== undefined ? '"' : singleQuoted !== undefined ? "'" : "";
-      return `url(${quote}${proxied}${quote})`;
-    },
-  );
+  return replaceCssUrls(imageSetsRewritten, ({ url, quote }, match) => {
+    if (!normalizeRemoteImageUrl(url.trim())) return match;
+    const proxied = replace(url.trim());
+    if (!proxied) return 'url("data:,")';
+    return `url(${quote}${proxied}${quote})`;
+  });
 }
 
 function transformImageSetCandidates(
@@ -210,12 +201,15 @@ function parseSrcset(srcset: string): SrcsetEntry[] {
   const parts = srcset.split(",").map((part) => part.trim());
   const entries: SrcsetEntry[] = [];
   let current = "";
+  // Only the last part can end in a descriptor, so check it rather than the growing candidate.
+  let currentHasDescriptor = false;
   for (const part of parts) {
     const startsWithUrl = /^(https?:\/\/|\/\/|\/|data:|blob:|cid:)/i.test(part);
-    if (!current || hasDescriptor(current) || startsWithUrl) {
+    if (!current || currentHasDescriptor || startsWithUrl) {
       if (current) entries.push(parseSrcsetEntry(current));
       current = part;
     } else current += `,${part}`;
+    currentHasDescriptor = hasDescriptor(part);
   }
   if (current) entries.push(parseSrcsetEntry(current));
   return entries.filter((entry) => entry.url);
@@ -236,5 +230,5 @@ function parseSrcsetEntry(value: string): SrcsetEntry {
 }
 
 function hasDescriptor(value: string): boolean {
-  return /\s+\d+(?:\.\d+)?[wx]$/i.test(value.trim());
+  return /\s\d+(?:\.\d+)?[wx]$/i.test(value.trim());
 }

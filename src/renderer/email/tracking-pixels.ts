@@ -1,3 +1,5 @@
+import { findCssUrls, replaceCssUrls } from "./css-urls";
+
 export interface TrackingPixelReport {
   totalImages: number;
   blockedCount: number;
@@ -12,7 +14,7 @@ export interface TrackingPixelDetail {
 }
 
 export const TRACKING_RULESET_METADATA = {
-  version: "2026-07-18.1",
+  version: "2026-11-14.1",
   auditedAt: "2026-07-18",
   sources: [
     "https://github.com/AdguardTeam/AdguardFilters/tree/master/MailTrackingFilter",
@@ -101,7 +103,12 @@ const TRACKING_HOST_PATTERNS = [
   /^t\.strk\d{2}\.email$/i,
 ];
 
-const EMAIL_TRACKING_PATTERNS = [
+// A pattern is a regular expression, or a list of expressions that must match in order, each
+// after the end of the previous match. Lists replace `a.*b`, which backtracks over the rest of the
+// URL from every match of `a`. A crafted URL tens of kilobytes long made that take seconds.
+type TrackingPattern = RegExp | readonly RegExp[];
+
+const EMAIL_TRACKING_PATTERNS: TrackingPattern[] = [
   /\/track\/open\.php\?u=/i,
   /\/wf\/open\?upn=/i,
   /dripemail2/i,
@@ -111,9 +118,9 @@ const EMAIL_TRACKING_PATTERNS = [
   /\/e\/o\/(?:[0-9a-z+/]{4})+(?:(?:[0-9a-z+/]{2}==)|(?:[0-9a-z+/]{3}=))?(?:[/?#]|$)/i,
   /mixmax\.com\/api\/track\//i,
   /mixmax\.com\/e\/o/i,
-  /\/\/tracking.*\/api\/track\/v2\//i,
+  [/\/\/tracking/i, /\/api\/track\/v2\//i],
   /contactmonkey\.com\/api\/v1\/tracker/i,
-  /\/\/(.*)\.convertkit-mail([1-9])?\.com\/o\//i,
+  [/\/\//, /\.convertkit-mail[1-9]?\.com\/o\//i],
   /polymail\.io(\/v2\/z\/)?/i,
   /share\.polymail\.io/i,
   /yamm-track\.appspot/i,
@@ -125,21 +132,21 @@ const EMAIL_TRACKING_PATTERNS = [
   /\/trk\?t=/i,
   /returnpath\.net\/pixel\.gif/i,
   /(outrch|whosen|getoutreach)\.com\/api\/mailings\/opened/i,
-  /\/\/(.*)\.intercom-\w+\.com(?:\/via)?\//i,
-  /\/\/links\..*\/oo\//i,
+  [/\/\//, /\.intercom-\w+\.com(?:\/via)?\//i],
+  [/\/\/links\./i, /\/oo\//i],
   /\.mjt\.lu\//i,
-  /\/oo\/.*\.gif/i,
+  [/\/oo\//i, /\.gif/i],
   /nethunt\.com\/api\/v1\/track\/email\//i,
   /apple\.com\/report\/2\/its_mail_sf/i,
   /\/o\/\w{10}\/\w{10}\//i,
-  /lt\.php(.*)\?l=open/i,
+  [/lt\.php/i, /\?l=open/i],
   /email81\.com\/case/i,
   /growthdot\.com\/api\/mail-tracking/i,
   /\/e2t\/(o|c|to)\//i,
   /getmailspring\.com\/open/i,
   /mixpanel\.com\/(trk|track)/i,
   /go\.sparkpostmail2\.com\/q\//i,
-  /\/\/click\..*\/open\.aspx/i,
+  [/\/\/click\./i, /\/open\.aspx/i],
   /infinite-stream-5194\.herokuapp\.com\/pixel\//i,
   /sailthru\.com\/trk/i,
   /trackapp\.io\/static\/img\/track\.gif/i,
@@ -152,9 +159,9 @@ const EMAIL_TRACKING_PATTERNS = [
   /\/tools\/emails\/open\//i,
   /\/\w*I0\/\w{16}-\w{8}-\w{4}/i,
   /\/open\/\d{3}\/\w{10}/i,
-  /\/\/(.*)\.enewsletter\.pl\/(.*)\.gif/i,
+  [/\/\//, /\.enewsletter\.pl\//i, /\.gif/i],
   /\/optiext\/optiextension\.dll\?ID=/i,
-  /\/\/mx\.technolutions\.net\/ss\/o\/(.*)\/ho\.gif/i,
+  [/\/\/mx\.technolutions\.net\/ss\/o\//i, /\/ho\.gif/i],
   /\/\/tracking\.vocus\.io\//i,
   /\/tr\/op\//i,
   /\/m\/opening\//i,
@@ -165,7 +172,7 @@ const EMAIL_TRACKING_PATTERNS = [
   /\/tf\/o\//i,
   /\/via\/o\?h=/i,
   /\/eos\/v1\//i,
-  /\/gp\/r\.html\?.*ref_=pe_.*_open/i,
+  [/\/gp\/r\.html\?/i, /ref_=pe_/i, /_open/i],
   /\/pub\/as\?_ri_=/i,
   /\/q\/[^/]+~~\//i,
   /\/s\/eo\//i,
@@ -177,24 +184,23 @@ const EMAIL_TRACKING_PATTERNS = [
   /t\.paypal\.com\/ts\?v=/i,
   /click\.emails\.paypal\.com/i,
   /cdn\.shopify\.com\/shopifycloud\/shopify\/assets\/themes_support\/notifications\/spacer-/i,
-  /link\.mail\.beehiiv\.com\/ss\/.*\.gif/i,
+  [/link\.mail\.beehiiv\.com\/ss\//i, /\.gif/i],
   /line\.my\.salesforce\.com\/servlet\/servlet\.ImageServer\?/i,
   /email\.[^/]+\.com\/o(?:[/?#]|$)/i,
 ];
 
-const GENERIC_TRACKING_PATHS = [
+const GENERIC_TRACKING_PATHS: TrackingPattern[] = [
   /\/(?:track|pixel|open|beacon|counter|analytics|stats|metrics|monitor)(?:[./?_-]|$)/i,
   /\/e\/o(?:[/?#]|$)/i,
-  /email.*track/i,
-  /track.*email/i,
-  /newsletter.*track/i,
-  /campaign.*track/i,
-  /marketing.*track/i,
+  [/email/i, /track/i],
+  [/track/i, /email/i],
+  [/newsletter/i, /track/i],
+  [/campaign/i, /track/i],
+  [/marketing/i, /track/i],
 ];
 
-// Several patterns above nest `.*`, so their cost grows with the cube of the input length. A crafted
-// image URL tens of kilobytes long can stall rendering, so only URLs up to this length are matched
-// against the pattern lists. Host and domain checks still run on longer URLs.
+// Patterns only see this many characters of a URL, which caps the work for each image. Tracking
+// markers sit in the host, path and start of the query, so a padded URL is still caught.
 const MAX_PATTERN_INPUT_LENGTH = 2048;
 
 const TRACKING_QUERY_PREFIXES = [
@@ -232,6 +238,22 @@ const ALLOWLIST = [
   },
 ];
 
+function matchesPattern(value: string, pattern: TrackingPattern): boolean {
+  if (pattern instanceof RegExp) return pattern.test(value);
+  let position = 0;
+  for (const part of pattern) {
+    const match = part.exec(value.slice(position));
+    if (!match) return false;
+    position += match.index + match[0].length;
+  }
+  return true;
+}
+
+function matchesAnyPattern(value: string, patterns: TrackingPattern[]): boolean {
+  const bounded = value.slice(0, MAX_PATTERN_INPUT_LENGTH);
+  return patterns.some((pattern) => matchesPattern(bounded, pattern));
+}
+
 function hostnameMatches(hostname: string, domain: string): boolean {
   return hostname === domain || hostname.endsWith(`.${domain}`);
 }
@@ -257,12 +279,9 @@ function trackingReason(source: string, aggressiveHeuristics: boolean): string |
   const url = parseRemoteUrl(source);
   if (!url || isAllowlisted(url)) return undefined;
 
-  const normalizedSource = source.toLowerCase();
+  // Match the parsed URL, which drops the tabs and newlines a browser ignores when it loads one.
   const hostname = url.hostname.toLowerCase();
-  if (
-    normalizedSource.length <= MAX_PATTERN_INPUT_LENGTH &&
-    EMAIL_TRACKING_PATTERNS.some((pattern) => pattern.test(normalizedSource))
-  )
+  if (matchesAnyPattern(url.href.toLowerCase(), EMAIL_TRACKING_PATTERNS))
     return "Known tracking pattern";
   if (TRACKING_DOMAINS.some((domain) => hostnameMatches(hostname, domain)))
     return "Known tracking service";
@@ -274,11 +293,7 @@ function trackingReason(source: string, aggressiveHeuristics: boolean): string |
     return "Known tracking service";
   if (hostname.split(".").some((label) => TRACKING_SUBDOMAIN_LABELS.has(label)))
     return "Tracking subdomain";
-  const pathAndSearch = `${url.pathname}${url.search}`;
-  if (
-    pathAndSearch.length <= MAX_PATTERN_INPUT_LENGTH &&
-    GENERIC_TRACKING_PATHS.some((pattern) => pattern.test(pathAndSearch))
-  )
+  if (matchesAnyPattern(`${url.pathname}${url.search}`, GENERIC_TRACKING_PATHS))
     return "Tracking URL";
 
   const hasTrackingParameter = [...url.searchParams.keys()].some((key) =>
@@ -403,81 +418,13 @@ function removeTrackingCssUrls(value: string): {
 } {
   const imageSetResult = removeTrackingImageSetCandidates(value);
   const trackingPixels = [...imageSetResult.trackingPixels];
-  const cleaned = replaceCssUrls(imageSetResult.value, (match, source) => {
+  const cleaned = replaceCssUrls(imageSetResult.value, ({ url: source }, match) => {
     const reason = trackingReason(source, false);
     if (!reason) return match;
     trackingPixels.push(trackingPixelDetail(source, reason));
     return "none";
   });
   return { value: cleaned, trackingPixels };
-}
-
-// Finds the next match of a global pattern at or after a position, remembering the last answer so
-// repeated lookups from increasing positions scan the string once. Without this, a stylesheet
-// repeating `url("` thousands of times without closing quotes takes quadratic time.
-function nextMatchFinder(value: string, pattern: RegExp): (from: number) => number {
-  let cachedFrom = -1;
-  let cachedIndex = -1;
-  return (from) => {
-    if (cachedFrom >= 0 && from >= cachedFrom && (cachedIndex === -1 || cachedIndex >= from))
-      return cachedIndex;
-    pattern.lastIndex = from;
-    cachedFrom = from;
-    cachedIndex = pattern.exec(value)?.index ?? -1;
-    return cachedIndex;
-  };
-}
-
-// Replaces each `url(...)` in CSS text in linear time. A quoted URL ends at the first matching
-// quote on the same line. An unquoted URL runs until whitespace or `)`.
-function replaceCssUrls(value: string, replace: (match: string, source: string) => string): string {
-  const nextDoubleQuote = nextMatchFinder(value, /"/g);
-  const nextSingleQuote = nextMatchFinder(value, /'/g);
-  const nextLineBreak = nextMatchFinder(value, /[\n\r\u2028\u2029]/g);
-  const nextUnquotedEnd = nextMatchFinder(value, /[\s)]/g);
-  const skipWhitespace = (position: number) => {
-    while (position < value.length && /\s/.test(value[position])) position += 1;
-    return position;
-  };
-
-  const start = /url\(/gi;
-  let result = "";
-  let copiedThrough = 0;
-  let match: RegExpExecArray | null;
-  while ((match = start.exec(value))) {
-    const urlStart = skipWhitespace(start.lastIndex);
-    let source: string | undefined;
-    let end = -1;
-
-    const quote = value[urlStart];
-    if (quote === '"' || quote === "'") {
-      const closeQuote = (quote === '"' ? nextDoubleQuote : nextSingleQuote)(urlStart + 1);
-      const lineBreak = nextLineBreak(urlStart + 1);
-      if (closeQuote !== -1 && (lineBreak === -1 || closeQuote < lineBreak)) {
-        const closeParenthesis = skipWhitespace(closeQuote + 1);
-        if (value[closeParenthesis] === ")") {
-          source = value.slice(urlStart + 1, closeQuote);
-          end = closeParenthesis + 1;
-        }
-      }
-    }
-    if (source === undefined) {
-      const unquotedEnd = nextUnquotedEnd(urlStart);
-      const sourceEnd = unquotedEnd === -1 ? value.length : unquotedEnd;
-      const closeParenthesis = skipWhitespace(sourceEnd);
-      if (sourceEnd > urlStart && value[closeParenthesis] === ")") {
-        source = value.slice(urlStart, sourceEnd);
-        end = closeParenthesis + 1;
-      }
-    }
-    if (source === undefined) continue;
-
-    result +=
-      value.slice(copiedThrough, match.index) + replace(value.slice(match.index, end), source);
-    copiedThrough = end;
-    start.lastIndex = end;
-  }
-  return result + value.slice(copiedThrough);
 }
 
 function removeTrackingImageSetCandidates(value: string): {
@@ -566,8 +513,8 @@ function splitCssFunctionArguments(value: string): string[] {
 function cssImageCandidateUrl(candidate: string): string | undefined {
   const stringMatch = /^(["'])(.*?)\1/.exec(candidate);
   if (stringMatch) return stringMatch[2];
-  const urlMatch = /^url\(\s*(?:(["'])(.*?)\1|([^\s)]+))\s*\)/i.exec(candidate);
-  return urlMatch?.[2] || urlMatch?.[3];
+  const [url] = findCssUrls(candidate);
+  return url?.start === 0 ? url.url : undefined;
 }
 
 export function blockTrackingPixels(document: Document): TrackingPixelReport {

@@ -534,43 +534,77 @@ describe("email HTML security", () => {
     ]);
   });
 
-  it("checks crafted long image URLs quickly and still blocks normal trackers", () => {
-    const crafted = `https://images.example/gp/r.html?${"/gp/r.html?".repeat(1200)}${"ref_=pe_".repeat(1200)}`;
-    const longTrackerHost = `https://t.yesware.com/t/${"a".repeat(30_000)}.gif`;
-    const amazonTracker = "https://www.amazon.com/gp/r.html?C=1&ref_=pe_123_open";
+  it("blocks pattern-matched trackers that are padded or contain ignored whitespace", () => {
+    const urls = [
+      `https://email.shop.example/wf/open?upn=abc&p=${"a".repeat(5_000)}`,
+      `https://www.amazon.com/gp/r.html?C=1&ref_=pe_123_open&p=${"a".repeat(5_000)}`,
+      "https://x.example/wf/o&#9;pen?upn=1",
+    ];
     const parsed = new DOMParser().parseFromString(
-      `${`<img src="${crafted}" srcset="${crafted} 2x">`.repeat(100)}
-       <img src="${longTrackerHost}" width="600" height="400">
-       <img src="${amazonTracker}" width="600" height="400">`,
+      urls.map((url) => `<img src="${url}" width="600" height="400">`).join(""),
       "text/html",
     );
 
-    const started = performance.now();
     const report = blockTrackingPixels(parsed);
 
-    expect(performance.now() - started).toBeLessThan(1000);
-    expect(report.trackingPixels.map(({ url, reason }) => [url, reason])).toEqual([
-      [longTrackerHost, "Known tracking service"],
-      [amazonTracker, "Known tracking pattern"],
-    ]);
+    expect(report.blockedCount).toBe(3);
+    expect(report.trackingPixels.every(({ reason }) => reason === "Known tracking pattern")).toBe(
+      true,
+    );
   });
 
-  it("scans crafted CSS and srcset values in linear time", () => {
+  it("blocks CSS trackers whose quoted URL contains an escaped quote", () => {
     const parsed = new DOMParser().parseFromString(
-      `<style>${'url("'.repeat(40_000)}${"url(".repeat(40_000)}
-         .tracked { background: url("https://t.yesware.com/t/message-1.gif"); }</style>
-       <img src="https://images.example/content.png" srcset="a${",".repeat(50_000)}b 2x"
-         width="600" height="400">`,
+      `<style>.a { background: url("https://t.yesware.com/t/x\\"y.gif"); }
+         .b { background: url('https://t.yesware.com/t/x\\'y.gif'); }</style>`,
       "text/html",
     );
 
-    const started = performance.now();
     const report = blockTrackingPixels(parsed);
 
-    expect(performance.now() - started).toBeLessThan(1000);
+    expect(report.blockedCount).toBe(2);
+    expect(parsed.querySelector("style")?.textContent).not.toContain("yesware");
+  });
+
+  it("handles crafted URLs, stylesheets, and srcsets without stalling", () => {
+    const nearCap = (part: string) => `https://images.example/${part.repeat(2_100 / part.length)}`;
+    const craftedUrls = [
+      `https://images.example/gp/r.html?${"/gp/r.html?".repeat(1_200)}${"ref_=pe_".repeat(1_200)}`,
+      nearCap("/gp/r.html?ref_=pe_"),
+      nearCap("//x.enewsletter.pl/"),
+      nearCap("//tracking/oo/"),
+      nearCap("emailnewsletter"),
+      nearCap("a"),
+    ];
+    const craftedCss = [
+      'url("'.repeat(40_000),
+      "url(".repeat(40_000),
+      `${"url(".repeat(20_000)}${" ".repeat(20_000)}`,
+      `${'url("'.repeat(20_000)}"${" ".repeat(20_000)}`,
+    ].join("\n");
+    const html = `${craftedUrls
+      .flatMap((url) => Array.from({ length: 100 }, () => `<img src="${url}" srcset="${url} 2x">`))
+      .join("")}
+      <style>${craftedCss}
+        .tracked { background: url("https://t.yesware.com/t/message-1.gif"); }</style>
+      <img src="https://images.example/content.png" srcset="a${",".repeat(50_000)}b 2x"
+        width="600" height="400">
+      <img src="https://images.example/b.png" srcset="https://images.example/a.png,${`a${" ".repeat(20_000)}b,`.repeat(5)}"
+        width="600" height="400">
+      <img src="https://www.amazon.com/gp/r.html?C=1&ref_=pe_123_open" width="600" height="400">`;
+    const parsed = new DOMParser().parseFromString(html, "text/html");
+
+    let started = performance.now();
+    const report = blockTrackingPixels(parsed);
+    expect(performance.now() - started).toBeLessThan(3_000);
     expect(report.trackingPixels.map(({ url }) => url)).toEqual([
+      "https://www.amazon.com/gp/r.html?C=1&ref_=pe_123_open",
       "https://t.yesware.com/t/message-1.gif",
     ]);
+
+    started = performance.now();
+    collectRemoteImageUrls(html);
+    expect(performance.now() - started).toBeLessThan(3_000);
   });
 
   it("keeps legitimate content in CSS, legacy backgrounds, and picture sources", () => {
