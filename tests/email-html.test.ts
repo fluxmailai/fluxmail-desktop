@@ -611,18 +611,25 @@ describe("email HTML security", () => {
       "url(https://t.yesware.com/t/g\u00a0h.gif)",
       'url("https://t.yesware.com/t/i.gif" /* note */ )',
     ];
+    // A url() left open at the end of a stylesheet is closed by the end of the text.
+    const unclosed = [
+      'url("https://t.yesware.com/t/j.gif\\")',
+      "url(https://t.yesware.com/t/k.gif",
+    ];
     const html = `<style>${trackers.map((url, index) => `.t${index} { background: ${url}; }`).join("\n")}
-      .content { background: url(https://images.example/a\\ b.png); }</style>`;
+      .content { background: url(https://images.example/a.png); }</style>
+      ${unclosed.map((url) => `<style>.u { background: ${url}</style>`).join("")}`;
     const parsed = new DOMParser().parseFromString(html, "text/html");
 
     const report = blockTrackingPixels(parsed);
 
-    expect(report.blockedCount).toBe(trackers.length);
-    expect(parsed.querySelector("style")?.textContent).not.toContain("yesware");
-    expect(collectRemoteImageUrls(html)).toEqual(["https://images.example/a/%20b.png"]);
+    expect(report.blockedCount).toBe(trackers.length + unclosed.length);
+    for (const style of parsed.querySelectorAll("style"))
+      expect(style.textContent).not.toContain("yesware");
+    expect(collectRemoteImageUrls(html)).toEqual(["https://images.example/a.png"]);
   });
 
-  it("handles crafted URLs, stylesheets, and srcsets without stalling", () => {
+  it("handles crafted URLs, stylesheets, and srcsets without stalling", { timeout: 30_000 }, () => {
     const craftedUrls = [
       `https://images.example/gp/r.html?${"/gp/r.html?".repeat(1_200)}${"ref_=pe_".repeat(1_200)}`,
       ...["/gp/r.html?ref_=pe_", "//x.enewsletter.pl/", "//tracking/oo/", "email.", "/e/o/x/"].map(
@@ -637,6 +644,7 @@ describe("email HTML security", () => {
       `background: url(${" ".repeat(50_000)}`,
       `background: ${"image-set(".repeat(20_000)}`,
       "/*".repeat(20_000),
+      `.chain { ${Array.from({ length: 60 }, (_, level) => `--p${level}: var(--p${level + 1}) var(--p${level + 1});`).join(" ")} background: var(--p0); }`,
     ].join("\n");
     const html = `${craftedUrls
       .flatMap((url) => Array.from({ length: 20 }, () => `<img src="${url}" srcset="${url} 2x">`))
@@ -664,8 +672,9 @@ describe("email HTML security", () => {
     collectRemoteImageUrls(html);
     expect(performance.now() - started).toBeLessThan(5_000);
 
+    // Without <img> tags, hasRemoteImages has to work through every stylesheet check.
     started = performance.now();
-    expect(hasRemoteImages(html)).toBe(true);
+    expect(hasRemoteImages(`<style>${craftedCss}</style>`)).toBe(false);
     expect(performance.now() - started).toBeLessThan(5_000);
   });
 

@@ -208,25 +208,25 @@ const BASE64_CHARACTER = /[0-9a-z+/]/i;
 // `#` or the end. Because `/` is a base64 character, the expression can end at any `/` a multiple
 // of four characters into the run. Each run of base64 characters is scanned once.
 export function hasBase64OpenPath(value: string): boolean {
-  const ends = (position: number) => position === value.length || "/?#".includes(value[position]!);
-  const lowercase = value.toLowerCase();
-  let marker = lowercase.indexOf("/e/o/");
+  const text = value.toLowerCase();
+  const ends = (position: number) => position === text.length || "/?#".includes(text[position]!);
+  let marker = text.indexOf("/e/o/");
   while (marker !== -1) {
     // `/e/o/` is made of base64 characters, so every marker in this run shares its end.
     let runEnd = marker;
-    while (runEnd < value.length && BASE64_CHARACTER.test(value[runEnd]!)) runEnd += 1;
+    while (runEnd < text.length && BASE64_CHARACTER.test(text[runEnd]!)) runEnd += 1;
     const lastSlashByOffset = [-1, -1, -1, -1];
     for (let position = marker + 5; position < runEnd; position += 1)
-      if (value[position] === "/") lastSlashByOffset[position % 4] = position;
+      if (text[position] === "/") lastSlashByOffset[position % 4] = position;
 
-    for (; marker !== -1 && marker + 5 <= runEnd; marker = lowercase.indexOf("/e/o/", marker + 1)) {
+    for (; marker !== -1 && marker + 5 <= runEnd; marker = text.indexOf("/e/o/", marker + 1)) {
       const groupsStart = marker + 5;
       const length = runEnd - groupsStart;
       if (lastSlashByOffset[groupsStart % 4]! >= groupsStart + 4) return true;
       if (length >= 4 && length % 4 === 0 && ends(runEnd)) return true;
-      if (length >= 6 && length % 4 === 2 && value.startsWith("==", runEnd) && ends(runEnd + 2))
+      if (length >= 6 && length % 4 === 2 && text.startsWith("==", runEnd) && ends(runEnd + 2))
         return true;
-      if (length >= 7 && length % 4 === 3 && value[runEnd] === "=" && ends(runEnd + 1)) return true;
+      if (length >= 7 && length % 4 === 3 && text[runEnd] === "=" && ends(runEnd + 1)) return true;
     }
   }
   return false;

@@ -960,31 +960,42 @@ function stripCssComments(value: string): string {
   }
 }
 
+// A custom property can reference others through var(), so a declaration shows a remote image
+// when it contains one or references a property that leads to one. Following references from
+// each declaration takes exponential time on a crafted chain of properties that each reference the
+// next twice, so this finds every property that leads to a remote image in one pass instead.
 function hasRemoteCssImage(values: string[]): boolean {
   const css = stripCssComments(values.join("\n"));
-  const customProperties = new Map<string, string[]>();
-  for (const match of css.matchAll(CSS_CUSTOM_PROPERTY)) {
-    const definitions = customProperties.get(match[1]) ?? [];
-    definitions.push(match[2]);
-    customProperties.set(match[1], definitions);
+  const referrers = new Map<string, Set<string>>();
+  const remoteProperties = new Set<string>();
+  const pending: string[] = [];
+  const markRemote = (property: string) => {
+    if (remoteProperties.has(property)) return;
+    remoteProperties.add(property);
+    pending.push(property);
+  };
+  for (const [, property, definition] of css.matchAll(CSS_CUSTOM_PROPERTY)) {
+    if (cssValueHasRemoteImage(definition)) markRemote(property);
+    for (const referenced of referencedCustomProperties(definition)) {
+      const propertyReferrers = referrers.get(referenced) ?? new Set<string>();
+      propertyReferrers.add(property);
+      referrers.set(referenced, propertyReferrers);
+    }
   }
-  return [...css.matchAll(CSS_IMAGE_DECLARATION)].some((match) =>
-    cssValueHasRemoteImage(match[1], customProperties, new Set()),
+  for (let property = pending.pop(); property !== undefined; property = pending.pop())
+    for (const referrer of referrers.get(property) ?? []) markRemote(referrer);
+
+  return [...css.matchAll(CSS_IMAGE_DECLARATION)].some(
+    ([, value]) =>
+      cssValueHasRemoteImage(value) ||
+      referencedCustomProperties(value).some((property) => remoteProperties.has(property)),
   );
 }
 
-function cssValueHasRemoteImage(
-  value: string,
-  customProperties: Map<string, string[]>,
-  visited: Set<string>,
-): boolean {
-  if (REMOTE_CSS_URL.test(value) || hasRemoteImageSetString(value)) return true;
-  return [...value.matchAll(/var\(\s*(--[-\w]+)/gi)].some((match) => {
-    const property = match[1];
-    if (visited.has(property)) return false;
-    const nextVisited = new Set(visited).add(property);
-    return (customProperties.get(property) ?? []).some((definition) =>
-      cssValueHasRemoteImage(definition, customProperties, nextVisited),
-    );
-  });
+function cssValueHasRemoteImage(value: string): boolean {
+  return REMOTE_CSS_URL.test(value) || hasRemoteImageSetString(value);
+}
+
+function referencedCustomProperties(value: string): string[] {
+  return [...value.matchAll(/var\(\s*(--[-\w]+)/gi)].map((match) => match[1]);
 }

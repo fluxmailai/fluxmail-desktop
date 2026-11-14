@@ -19,7 +19,7 @@ const CSS_WHITESPACE = new Set([" ", "\t", "\n", "\r", "\f"]);
  *
  * A quoted URL ends at the next unescaped matching quote, and may be followed by whitespace and
  * comments before `)`. An unquoted URL ends at `)` or at whitespace followed by `)`, and is invalid
- * if it contains an unescaped quote or `(`. Scanning resumes at the next `url(` after an invalid
+ * if it contains an unescaped quote or `(`. The end of the text closes an open string or url(). Scanning resumes at the next `url(` after an invalid
  * one, so an inner `url(` is still found.
  */
 export function findCssUrls(value: string): CssUrl[] {
@@ -45,6 +45,9 @@ export function findCssUrls(value: string): CssUrl[] {
     return position;
   };
 
+  // As in CSS, the end of the text closes an open string or url() the way `)` would.
+  const closes = (position: number) => position >= value.length || value[position] === ")";
+
   let match: RegExpExecArray | null;
   while ((match = start.exec(value))) {
     const urlStart = nextNonWhitespace(start.lastIndex);
@@ -54,20 +57,20 @@ export function findCssUrls(value: string): CssUrl[] {
       const closeQuote = closingQuote(value, urlStart);
       const closeParenthesis =
         closeQuote === undefined ? undefined : skipWhitespaceAndComments(closeQuote + 1);
-      if (closeQuote !== undefined && value[closeParenthesis!] === ")")
+      if (closeQuote !== undefined && closes(closeParenthesis!))
         url = {
           start: match.index,
-          end: closeParenthesis! + 1,
+          end: Math.min(closeParenthesis! + 1, value.length),
           url: value.slice(urlStart + 1, closeQuote),
           quote,
         };
     } else {
       const contentEnd = unquotedUrlEnd(value, urlStart);
       const closeParenthesis = contentEnd === undefined ? undefined : nextNonWhitespace(contentEnd);
-      if (contentEnd !== undefined && value[closeParenthesis!] === ")")
+      if (contentEnd !== undefined && closes(closeParenthesis!))
         url = {
           start: match.index,
-          end: closeParenthesis! + 1,
+          end: Math.min(closeParenthesis! + 1, value.length),
           url: value.slice(urlStart, contentEnd),
           quote: "",
         };
@@ -90,8 +93,8 @@ export function replaceCssUrls(value: string, replace: (url: CssUrl, match: stri
   return result + value.slice(copiedThrough);
 }
 
-// Returns the index of the quote that closes the string opening at `openQuote`, or undefined when
-// a newline or the end of the text comes first. The scan stops at the next unescaped quote of the
+// Returns the index of the quote that closes the string opening at `openQuote`, the end of the
+// text if that comes first, or undefined when an unescaped newline makes the string invalid. The scan stops at the next unescaped quote of the
 // same kind, so scans from different `url("` never cover the same text twice.
 function closingQuote(value: string, openQuote: number): number | undefined {
   const quote = value[openQuote];
@@ -101,7 +104,7 @@ function closingQuote(value: string, openQuote: number): number | undefined {
     else if (character === quote) return position;
     else if (character === "\n" || character === "\r" || character === "\f") return undefined;
   }
-  return undefined;
+  return value.length;
 }
 
 // Returns the index just past an unquoted URL, or undefined when it is invalid. The scan stops at
@@ -113,7 +116,7 @@ function unquotedUrlEnd(value: string, from: number): number | undefined {
     else if (character === ")" || CSS_WHITESPACE.has(character)) return position;
     else if (character === '"' || character === "'" || character === "(") return undefined;
   }
-  return undefined;
+  return value.length;
 }
 
 // Wraps a forward search so lookups from positions inside the last searched stretch reuse its
