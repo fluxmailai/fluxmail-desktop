@@ -7,7 +7,7 @@ Fluxmail Desktop records user-facing changes in this file. The format follows [C
 ### Fixed
 
 - Block Sendinblue (Brevo) tracking pixels, which the tracker list missed because of a typo.
-- Keep a message with very long image URLs or stylesheets from freezing the app while it opens.
+- Stop crafted image URLs and stylesheets from freezing the app while it checks a message for trackers and remote images.
 
 ## [0.9.1](https://github.com/fluxmailai/fluxmail-desktop/releases/tag/v0.9.1) - 2026-11-11
 

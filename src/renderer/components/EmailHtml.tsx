@@ -928,11 +928,40 @@ export function hasRemoteImages(value: string): boolean {
 const CSS_IMAGE_DECLARATION =
   /(?:^|[;{])\s*(?:background(?:-image)?|border-image(?:-source)?|content|cursor|list-style(?:-image)?|mask(?:-image)?|-webkit-mask(?:-image)?|shape-outside)\s*:\s*([^;}]+)/gi;
 const CSS_CUSTOM_PROPERTY = /(?:^|[;{])\s*(--[-\w]+)\s*:\s*([^;}]+)/gi;
-const REMOTE_CSS_URL = /url\(\s*(?:(?:["'])?\s*https?:\/\/)/i;
-const REMOTE_IMAGE_SET_STRING = /(?:-webkit-)?image-set\([^)]*["']\s*https?:\/\//i;
+// Email CSS is untrusted, so these checks avoid expressions that rescan the rest of the text from
+// every match, which let a crafted stylesheet freeze the app when a message opened.
+const REMOTE_CSS_URL = /url\(\s*(?:["']\s*)?https?:\/\//i;
+const REMOTE_URL_STRING = /["']\s*https?:\/\//i;
+
+// True when an `image-set(` has a quoted remote URL before the next `)`. Every `image-set(` before
+// the same `)` sees a part of the first one's text, so only the first needs checking.
+function hasRemoteImageSetString(value: string): boolean {
+  const start = /image-set\(/gi;
+  while (start.exec(value)) {
+    const close = value.indexOf(")", start.lastIndex);
+    const end = close === -1 ? value.length : close;
+    if (REMOTE_URL_STRING.test(value.slice(start.lastIndex, end))) return true;
+    if (close === -1) return false;
+    start.lastIndex = close + 1;
+  }
+  return false;
+}
+
+// Removes closed `/* */` comments, as /\/\*[\s\S]*?\*\//g does, in linear time.
+function stripCssComments(value: string): string {
+  let result = "";
+  let copiedThrough = 0;
+  for (;;) {
+    const open = value.indexOf("/*", copiedThrough);
+    const close = open === -1 ? -1 : value.indexOf("*/", open + 2);
+    if (close === -1) return result + value.slice(copiedThrough);
+    result += value.slice(copiedThrough, open);
+    copiedThrough = close + 2;
+  }
+}
 
 function hasRemoteCssImage(values: string[]): boolean {
-  const css = values.join("\n").replace(/\/\*[\s\S]*?\*\//g, "");
+  const css = stripCssComments(values.join("\n"));
   const customProperties = new Map<string, string[]>();
   for (const match of css.matchAll(CSS_CUSTOM_PROPERTY)) {
     const definitions = customProperties.get(match[1]) ?? [];
@@ -949,7 +978,7 @@ function cssValueHasRemoteImage(
   customProperties: Map<string, string[]>,
   visited: Set<string>,
 ): boolean {
-  if (REMOTE_CSS_URL.test(value) || REMOTE_IMAGE_SET_STRING.test(value)) return true;
+  if (REMOTE_CSS_URL.test(value) || hasRemoteImageSetString(value)) return true;
   return [...value.matchAll(/var\(\s*(--[-\w]+)/gi)].some((match) => {
     const property = match[1];
     if (visited.has(property)) return false;

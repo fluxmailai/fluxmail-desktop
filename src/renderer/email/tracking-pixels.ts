@@ -103,10 +103,12 @@ const TRACKING_HOST_PATTERNS = [
   /^t\.strk\d{2}\.email$/i,
 ];
 
-// A pattern is a regular expression, or a list of expressions that must match in order, each
-// after the end of the previous match. Lists replace `a.*b`, which backtracks over the rest of the
-// URL from every match of `a`. A crafted URL tens of kilobytes long made that take seconds.
-type TrackingPattern = RegExp | readonly RegExp[];
+// Image URLs in email are untrusted and unbounded, so every pattern must run in linear time. A
+// pattern is a regular expression, a list of expressions that must match in order (each after the
+// end of the previous match), or a function. Lists replace `a.*b`, which backtracks over the rest
+// of the URL from every match of `a`: a crafted 23 KB URL made one check take seconds. Functions
+// replace the two expressions that backtracked from every occurrence of their prefix.
+type TrackingPattern = RegExp | readonly RegExp[] | ((value: string) => boolean);
 
 const EMAIL_TRACKING_PATTERNS: TrackingPattern[] = [
   /\/track\/open\.php\?u=/i,
@@ -115,7 +117,7 @@ const EMAIL_TRACKING_PATTERNS: TrackingPattern[] = [
   /icptrack\.com\/icp\/track/i,
   /mkt4477\.com\/open/i,
   /strongview\.com\/t\//i,
-  /\/e\/o\/(?:[0-9a-z+/]{4})+(?:(?:[0-9a-z+/]{2}==)|(?:[0-9a-z+/]{3}=))?(?:[/?#]|$)/i,
+  hasBase64OpenPath,
   /mixmax\.com\/api\/track\//i,
   /mixmax\.com\/e\/o/i,
   [/\/\/tracking/i, /\/api\/track\/v2\//i],
@@ -186,7 +188,7 @@ const EMAIL_TRACKING_PATTERNS: TrackingPattern[] = [
   /cdn\.shopify\.com\/shopifycloud\/shopify\/assets\/themes_support\/notifications\/spacer-/i,
   [/link\.mail\.beehiiv\.com\/ss\//i, /\.gif/i],
   /line\.my\.salesforce\.com\/servlet\/servlet\.ImageServer\?/i,
-  /email\.[^/]+\.com\/o(?:[/?#]|$)/i,
+  hasEmailOpenPath,
 ];
 
 const GENERIC_TRACKING_PATHS: TrackingPattern[] = [
@@ -199,9 +201,54 @@ const GENERIC_TRACKING_PATHS: TrackingPattern[] = [
   [/marketing/i, /track/i],
 ];
 
-// Patterns only see this many characters of a URL, which caps the work for each image. Tracking
-// markers sit in the host, path and start of the query, so a padded URL is still caught.
-const MAX_PATTERN_INPUT_LENGTH = 2048;
+const BASE64_CHARACTER = /[0-9a-z+/]/i;
+
+// Matches what /\/e\/o\/(?:[0-9a-z+/]{4})+(?:[0-9a-z+/]{2}==|[0-9a-z+/]{3}=)?(?:[/?#]|$)/i
+// matches: `/e/o/`, whole groups of four base64 characters with optional padding, then `/`, `?`,
+// `#` or the end. Because `/` is a base64 character, the expression can end at any `/` a multiple
+// of four characters into the run. Each run of base64 characters is scanned once.
+export function hasBase64OpenPath(value: string): boolean {
+  const ends = (position: number) => position === value.length || "/?#".includes(value[position]!);
+  const lowercase = value.toLowerCase();
+  let marker = lowercase.indexOf("/e/o/");
+  while (marker !== -1) {
+    // `/e/o/` is made of base64 characters, so every marker in this run shares its end.
+    let runEnd = marker;
+    while (runEnd < value.length && BASE64_CHARACTER.test(value[runEnd]!)) runEnd += 1;
+    const lastSlashByOffset = [-1, -1, -1, -1];
+    for (let position = marker + 5; position < runEnd; position += 1)
+      if (value[position] === "/") lastSlashByOffset[position % 4] = position;
+
+    for (; marker !== -1 && marker + 5 <= runEnd; marker = lowercase.indexOf("/e/o/", marker + 1)) {
+      const groupsStart = marker + 5;
+      const length = runEnd - groupsStart;
+      if (lastSlashByOffset[groupsStart % 4]! >= groupsStart + 4) return true;
+      if (length >= 4 && length % 4 === 0 && ends(runEnd)) return true;
+      if (length >= 6 && length % 4 === 2 && value.startsWith("==", runEnd) && ends(runEnd + 2))
+        return true;
+      if (length >= 7 && length % 4 === 3 && value[runEnd] === "=" && ends(runEnd + 1)) return true;
+    }
+  }
+  return false;
+}
+
+// Matches what /email\.[^/]+\.com\/o(?:[/?#]|$)/i matches: a path segment that contains
+// `email.` and ends in `.com` with at least one character between them, followed by `/o` and then
+// `/`, `?`, `#` or the end.
+export function hasEmailOpenPath(value: string): boolean {
+  const segments = value.toLowerCase().split("/");
+  return segments.some((segment, index) => {
+    const marker = segment.indexOf("email.");
+    const next = segments[index + 1];
+    return (
+      marker !== -1 &&
+      segment.endsWith(".com") &&
+      marker + 6 < segment.length - 4 &&
+      next !== undefined &&
+      /^o(?:[?#]|$)/.test(next)
+    );
+  });
+}
 
 const TRACKING_QUERY_PREFIXES = [
   "email_",
@@ -240,6 +287,7 @@ const ALLOWLIST = [
 
 function matchesPattern(value: string, pattern: TrackingPattern): boolean {
   if (pattern instanceof RegExp) return pattern.test(value);
+  if (typeof pattern === "function") return pattern(value);
   let position = 0;
   for (const part of pattern) {
     const match = part.exec(value.slice(position));
@@ -250,8 +298,7 @@ function matchesPattern(value: string, pattern: TrackingPattern): boolean {
 }
 
 function matchesAnyPattern(value: string, patterns: TrackingPattern[]): boolean {
-  const bounded = value.slice(0, MAX_PATTERN_INPUT_LENGTH);
-  return patterns.some((pattern) => matchesPattern(bounded, pattern));
+  return patterns.some((pattern) => matchesPattern(value, pattern));
 }
 
 function hostnameMatches(hostname: string, domain: string): boolean {

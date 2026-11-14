@@ -9,12 +9,18 @@ export interface CssUrl {
   quote: string;
 }
 
+const CSS_WHITESPACE = new Set([" ", "\t", "\n", "\r", "\f"]);
+
 /**
- * Finds every `url(...)` in CSS text in time linear in its length. Email CSS is untrusted, and a
- * regular expression that rescans the rest of the text for each `url(` lets a crafted stylesheet
- * freeze rendering. A quoted URL ends at the first unescaped matching quote and must be followed by
- * optional whitespace and `)`. An unquoted URL runs to the first unescaped `)`, with optional
- * whitespace before it.
+ * Finds every `url(...)` in CSS text, following the CSS tokenizer closely enough to see what a
+ * browser would load. Email CSS is untrusted, so this runs in time linear in the text: a regular
+ * expression that rescans the rest of the text for each `url(` lets a crafted stylesheet freeze
+ * rendering.
+ *
+ * A quoted URL ends at the next unescaped matching quote, and may be followed by whitespace and
+ * comments before `)`. An unquoted URL ends at `)` or at whitespace followed by `)`, and is invalid
+ * if it contains an unescaped quote or `(`. Scanning resumes at the next `url(` after an invalid
+ * one, so an inner `url(` is still found.
  */
 export function findCssUrls(value: string): CssUrl[] {
   const urls: CssUrl[] = [];
@@ -22,60 +28,46 @@ export function findCssUrls(value: string): CssUrl[] {
   if (!start.test(value)) return urls;
   start.lastIndex = 0;
 
-  const nextNonWhitespace = nextIndexFinder(value, (from) => {
-    const match = /\S/g;
-    match.lastIndex = from;
-    return match.exec(value)?.index ?? -1;
+  // Several `url(` can be followed by the same whitespace or unclosed comment, so cache both
+  // lookups to scan each stretch of text once.
+  const nextNonWhitespace = cachedSearch((from) => {
+    while (CSS_WHITESPACE.has(value[from]!)) from += 1;
+    return from;
   });
-  const skipWhitespace = (from: number) => {
-    const index = nextNonWhitespace(from);
+  const nextCommentClose = cachedSearch((from) => {
+    const index = value.indexOf("*/", from);
     return index === -1 ? value.length : index;
-  };
-  const nextDoubleQuote = nextUnescapedFinder(value, '"');
-  const nextSingleQuote = nextUnescapedFinder(value, "'");
-  const nextCloseParenthesis = nextUnescapedFinder(value, ")");
-  const nextOpenParenthesis = nextUnescapedFinder(value, "(");
-  const nextWhitespace = nextIndexFinder(value, (from) => {
-    const match = /\s/g;
-    match.lastIndex = from;
-    return match.exec(value)?.index ?? -1;
   });
+  const skipWhitespaceAndComments = (from: number) => {
+    let position = nextNonWhitespace(from);
+    while (value.startsWith("/*", position))
+      position = nextNonWhitespace(Math.min(nextCommentClose(position + 2) + 2, value.length));
+    return position;
+  };
 
   let match: RegExpExecArray | null;
   while ((match = start.exec(value))) {
-    const urlStart = skipWhitespace(start.lastIndex);
+    const urlStart = nextNonWhitespace(start.lastIndex);
     const quote = value[urlStart];
     let url: CssUrl | undefined;
     if (quote === '"' || quote === "'") {
-      const closeQuote = (quote === '"' ? nextDoubleQuote : nextSingleQuote)(urlStart + 1);
-      const closeParenthesis = closeQuote === -1 ? -1 : skipWhitespace(closeQuote + 1);
-      if (closeParenthesis !== -1 && value[closeParenthesis] === ")")
+      const closeQuote = closingQuote(value, urlStart);
+      const closeParenthesis =
+        closeQuote === undefined ? undefined : skipWhitespaceAndComments(closeQuote + 1);
+      if (closeQuote !== undefined && value[closeParenthesis!] === ")")
         url = {
           start: match.index,
-          end: closeParenthesis + 1,
+          end: closeParenthesis! + 1,
           url: value.slice(urlStart + 1, closeQuote),
           quote,
         };
     } else {
-      // An unquoted URL can't contain whitespace, quotes or `(`. Browsers treat one that does as
-      // invalid, and so do we, so scanning resumes at the next `url(` instead of skipping past it.
-      const closeParenthesis = nextCloseParenthesis(urlStart);
-      const urlEnd = closeParenthesis === -1 ? -1 : nextWhitespace(urlStart);
-      const invalidAt = Math.min(
-        ...[nextDoubleQuote, nextSingleQuote, nextOpenParenthesis].map((find) => {
-          const index = find(urlStart);
-          return index === -1 ? value.length : index;
-        }),
-      );
-      const contentEnd = urlEnd === -1 || urlEnd > closeParenthesis ? closeParenthesis : urlEnd;
-      if (
-        closeParenthesis !== -1 &&
-        invalidAt > closeParenthesis &&
-        skipWhitespace(contentEnd) === closeParenthesis
-      )
+      const contentEnd = unquotedUrlEnd(value, urlStart);
+      const closeParenthesis = contentEnd === undefined ? undefined : nextNonWhitespace(contentEnd);
+      if (contentEnd !== undefined && value[closeParenthesis!] === ")")
         url = {
           start: match.index,
-          end: closeParenthesis + 1,
+          end: closeParenthesis! + 1,
           url: value.slice(urlStart, contentEnd),
           quote: "",
         };
@@ -98,33 +90,42 @@ export function replaceCssUrls(value: string, replace: (url: CssUrl, match: stri
   return result + value.slice(copiedThrough);
 }
 
-// Caches the last answer of a "next index at or after `from`" search, so lookups from increasing
-// positions scan the text once in total.
-function nextIndexFinder(value: string, find: (from: number) => number): (from: number) => number {
+// Returns the index of the quote that closes the string opening at `openQuote`, or undefined when
+// a newline or the end of the text comes first. The scan stops at the next unescaped quote of the
+// same kind, so scans from different `url("` never cover the same text twice.
+function closingQuote(value: string, openQuote: number): number | undefined {
+  const quote = value[openQuote];
+  for (let position = openQuote + 1; position < value.length; position += 1) {
+    const character = value[position];
+    if (character === "\\") position += 1;
+    else if (character === quote) return position;
+    else if (character === "\n" || character === "\r" || character === "\f") return undefined;
+  }
+  return undefined;
+}
+
+// Returns the index just past an unquoted URL, or undefined when it is invalid. The scan stops at
+// `(`, so it never reaches past the next `url(`.
+function unquotedUrlEnd(value: string, from: number): number | undefined {
+  for (let position = from; position < value.length; position += 1) {
+    const character = value[position]!;
+    if (character === "\\") position += 1;
+    else if (character === ")" || CSS_WHITESPACE.has(character)) return position;
+    else if (character === '"' || character === "'" || character === "(") return undefined;
+  }
+  return undefined;
+}
+
+// Wraps a forward search so lookups from positions inside the last searched stretch reuse its
+// answer. `search(from)` must return the first index at or after `from` where the stretch ends.
+function cachedSearch(search: (from: number) => number): (from: number) => number {
   let cachedFrom = -1;
   let cachedIndex = -1;
   return (from) => {
-    if (cachedFrom !== -1 && from >= cachedFrom && (cachedIndex === -1 || cachedIndex >= from))
-      return cachedIndex;
-    cachedFrom = from;
-    cachedIndex = find(from);
+    if (from < cachedFrom || from > cachedIndex) {
+      cachedFrom = from;
+      cachedIndex = search(from);
+    }
     return cachedIndex;
   };
-}
-
-// A character is escaped when an odd number of backslashes precede it. Callers search from just
-// after a quote or `url(`, so a run of backslashes never starts before `from`.
-function nextUnescapedFinder(value: string, character: string): (from: number) => number {
-  return nextIndexFinder(value, (from) => {
-    let index = value.indexOf(character, from);
-    while (index !== -1 && precedingBackslashes(value, index) % 2 === 1)
-      index = value.indexOf(character, index + 1);
-    return index;
-  });
-}
-
-function precedingBackslashes(value: string, index: number): number {
-  let count = 0;
-  while (index - count > 0 && value[index - count - 1] === "\\") count += 1;
-  return count;
 }
