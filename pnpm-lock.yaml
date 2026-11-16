@@ -37,7 +37,7 @@ importers:
         version: 3.4.17
       fluxmail:
         specifier: 0.28.0
-        version: 0.28.0(@types/better-sqlite3@7.6.13)(supports-color@8.1.1)
+        version: 0.28.0(@types/better-sqlite3@9.6.0)(supports-color@8.1.1)
       google-auth-library:
         specifier: 10.5.0
         version: 10.5.0(supports-color@8.1.1)
@@ -103,8 +103,8 @@ importers:
         specifier: ^14.6.8
         version: 14.6.8(@testing-library/dom@10.4.1)
       '@types/better-sqlite3':
-        specifier: ^7.6.13
-        version: 7.6.13
+        specifier: ^9.6.0
+        version: 9.6.0
       '@types/node':
         specifier: ^24.19.2
         version: 24.19.2
@@ -1579,8 +1579,8 @@ packages:
   '@types/babel__traverse@7.28.0':
     resolution: {integrity: sha512-8PvcXf70gTDZBgt9ptxJ8elBeBjcLOAcOtoO/mPJjtji1+CdGbHgm77om1GrsPxsiE+uXIpNSK64UYaIwQXd4Q==}
 
-  '@types/better-sqlite3@7.6.13':
-    resolution: {integrity: sha512-NMv9ASNARoKksWtsq/SHakpYAYnhBrQgGD8zkLYk/jaK8jUGn08CfEdTRgYhMypUQAfzSP8W6gNLe0q19/t4VA==}
+  '@types/better-sqlite3@9.6.0':
+    resolution: {integrity: sha512-ZEEwBSgMu7GYJOynoagg5X9JbxfL6dTJDsgViJIqh67jV44kyOr9RXfmFjLK5rzC4MWssP06t9hu/JwGDnUbCg==}
 
   '@types/cacheable-request@6.0.3':
     resolution: {integrity: sha512-IQ3EbTzGxIigb1I3qPZc1rWJnH0BmSKv5QYTalEwweFvyBDLSAe24zP0le/hyi7ecGfZVlIVAg4BZqb8WBwKqw==}
@@ -6028,7 +6028,7 @@ snapshots:
     dependencies:
       '@babel/types': 7.29.7
 
-  '@types/better-sqlite3@7.6.13':
+  '@types/better-sqlite3@9.6.0':
     dependencies:
       '@types/node': 24.19.2
 
@@ -6684,9 +6684,9 @@ snapshots:
     dependencies:
       type-fest: 4.41.0
 
-  drizzle-orm@0.45.4(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1):
+  drizzle-orm@0.45.4(@types/better-sqlite3@9.6.0)(better-sqlite3@12.11.1):
     optionalDependencies:
-      '@types/better-sqlite3': 7.6.13
+      '@types/better-sqlite3': 9.6.0
       better-sqlite3: 12.11.1
 
   ds-store@0.1.6:
@@ -6943,7 +6943,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  fluxmail@0.28.0(@types/better-sqlite3@7.6.13)(supports-color@8.1.1):
+  fluxmail@0.28.0(@types/better-sqlite3@9.6.0)(supports-color@8.1.1):
     dependencies:
       '@fluxmail/core': 0.28.0
       '@fluxmail/provider-gmail': 0.28.0(supports-color@8.1.1)
@@ -6957,7 +6957,7 @@ snapshots:
       '@node-rs/argon2': 2.2.2
       better-sqlite3: 12.11.1
       commander: 13.1.0
-      drizzle-orm: 0.45.4(@types/better-sqlite3@7.6.13)(better-sqlite3@12.11.1)
+      drizzle-orm: 0.45.4(@types/better-sqlite3@9.6.0)(better-sqlite3@12.11.1)
       hono: 4.13.16
       imapflow: 1.7.8
       mime-types: 3.0.2
