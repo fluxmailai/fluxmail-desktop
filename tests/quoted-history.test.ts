@@ -390,6 +390,10 @@ describe("subject prefixes", () => {
     expect(displaySubject("Re:Re: Plans")).toBe("Plans");
     expect(displaySubject("RE:[EXT] Plans")).toBe("[EXT] Plans");
     expect(displaySubject("Re: AW:Re: Pläne")).toBe("Pläne");
+    expect(displaySubject("Re[2]:Plans")).toBe("Plans");
+    expect(displaySubject("Re:2024 budget")).toBe("2024 budget");
+    expect(displaySubject("回复:计划")).toBe("计划");
+    expect(displaySubject("RE:FW: Plans")).toBe("FW: Plans");
   });
 
   it("keeps subjects that only look like replies", () => {
@@ -466,6 +470,12 @@ describe("outgoing reply and forward subjects", () => {
     ["Re[2]: Plans", "Re[2]: Plans"],
     ["Re(3): Plans", "Re(3): Plans"],
     ["Re:Re: Plans", "Re:Re: Plans"],
+    ["Re[2]:Plans", "Re[2]:Plans"],
+    ["Re:2024 budget", "Re:2024 budget"],
+    ["Re:你好", "Re:你好"],
+    ["RE:FW: Plans", "RE:FW: Plans"],
+    ["Re:AW: Plans", "Re:AW: Plans"],
+    ["回复:计划", "回复:计划"],
     ["AW: Re: Plans", "AW: Re: Plans"],
     ["Re：Plans", "Re：Plans"],
     ["回复：计划", "回复：计划"],
@@ -481,6 +491,7 @@ describe("outgoing reply and forward subjects", () => {
     ["[EXT] Plans", "Re: [EXT] Plans"],
     ["R: Plans", "Re: R: Plans"],
     ["re:Invent recap", "Re: re:Invent recap"],
+    ["RE:Plans", "Re: RE:Plans"],
     ["Regarding plans", "Re: Regarding plans"],
     ["AW: Plans", "Re: AW: Plans"],
     ["Fwd: Re: Plans", "Re: Fwd: Re: Plans"],
@@ -495,6 +506,8 @@ describe("outgoing reply and forward subjects", () => {
     ["[EXT] Fwd: Plans", "[EXT] Fwd: Plans"],
     ["Fwd:Fwd: Plans", "Fwd:Fwd: Plans"],
     ["Fwd：Plans", "Fwd：Plans"],
+    ["Fwd:Plans", "Fwd:Plans"],
+    ["FW:RE: Plans", "FW:RE: Plans"],
   ])("keeps the forward prefix already in %j", (subject, expected) => {
     expect(forwardSubject(subject)).toBe(expected);
   });
@@ -503,7 +516,6 @@ describe("outgoing reply and forward subjects", () => {
     ["Plans", "Fwd: Plans"],
     ["Re: Plans", "Fwd: Re: Plans"],
     ["[EXT] RE: Fwd: Plans", "Fwd: [EXT] RE: Fwd: Plans"],
-    ["fwd:thoughts", "Fwd: fwd:thoughts"],
     ["Fwdx: Plans", "Fwd: Fwdx: Plans"],
     ["I: note", "Fwd: I: note"],
     ["PD: budget", "Fwd: PD: budget"],

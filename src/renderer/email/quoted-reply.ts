@@ -226,17 +226,21 @@ const REPLY_SUBJECT = new RegExp(
   `${SUBJECT_TAGS}(?:(?:${PLAIN_REPLY_PREFIXES})${REPLY_COUNTER}|${LOCALIZED_REPLY_PREFIXES}|r)\\s*[:：]`,
   "i",
 );
-// A list tag, or a reply prefix. An ASCII colon must end a word or run into another prefix or
-// tag, so "re:Invent" is not one but "Re:Re: Plans" is. The group captures a plain prefix.
-const REPLY_PREFIX = `(?:(${PLAIN_REPLY_PREFIXES})${REPLY_COUNTER}|${LOCALIZED_REPLY_PREFIXES})`;
-const NEXT_REPLY_PREFIX = String.raw`(?:${PLAIN_REPLY_PREFIXES})${REPLY_COUNTER}\s*[:：]|(?:${LOCALIZED_REPLY_PREFIXES})\s*[:：]`;
-const SUBJECT_HEAD_TOKEN = String.raw`\s*(?:\[[^\]]*\]|${REPLY_PREFIX}\s*(?:：|:(?=[\s:：[]|$|${NEXT_REPLY_PREFIX}))+)`;
+// A reply prefix and its colon. A colon glued to an ASCII letter counts only when another prefix
+// follows, so "re:Invent" is not a reply but "Re:Re: Plans", "RE:FW: Plans" and "Re:2024 budget"
+// are. A counted ("Re[2]:") or Chinese or Japanese prefix takes any colon. The group captures a
+// plain prefix, which "AW:" and the other localized prefixes are not.
+const NEXT_PREFIX = String.raw`(?:${PLAIN_REPLY_PREFIXES})${REPLY_COUNTER}\s*[:：]|(?:${LOCALIZED_REPLY_PREFIXES}|fwd?)\s*[:：]`;
+const PREFIX_COLON = String.raw`(?:：|:(?![a-z])|:(?=${NEXT_PREFIX}))`;
+const UNAMBIGUOUS_REPLY_PREFIX = String.raw`re\s*[\[(]\d+[\])]|回复|答复|回覆|返信`;
+const REPLY_PREFIX = String.raw`(?:((?:${UNAMBIGUOUS_REPLY_PREFIX})\s*[:：]+|re\s*${PREFIX_COLON}+)|(?:${LOCALIZED_REPLY_PREFIXES})\s*${PREFIX_COLON}+)`;
+// A list tag or a reply prefix.
+const SUBJECT_HEAD_TOKEN = String.raw`\s*(?:\[[^\]]*\]|${REPLY_PREFIX})`;
 const SUBJECT_HEAD = new RegExp(`^(?:${SUBJECT_HEAD_TOKEN})*`, "i");
 const SUBJECT_HEAD_TOKENS = new RegExp(SUBJECT_HEAD_TOKEN, "gi");
-// "Fwd:" or "Fw:" after any list tags, with the same colon rule as a reply prefix. The localized
-// forward prefixes stay out, since an ordinary subject can start with "I:" or "PD:".
-const FORWARD_PREFIX = String.raw`fwd?\s*(?:：|:(?=[\s:：[]|$|fwd?\s*[:：]))`;
-const FORWARD_SUBJECT_HEAD = new RegExp(`${SUBJECT_TAGS}${FORWARD_PREFIX}`, "i");
+// "Fwd:" or "Fw:" after any list tags. The localized forward prefixes stay out, since an ordinary
+// subject can start with "I:" or "PD:".
+const FORWARD_SUBJECT_HEAD = new RegExp(`${SUBJECT_TAGS}fwd?\\s*[:：]`, "i");
 /** How much text next to the quote the forwarded-message checks read. */
 const FORWARD_CONTEXT = 200;
 const ORIGINAL_MESSAGE_LINE = /^-{2,}\s*Original Message\s*-{2,}$/i;
