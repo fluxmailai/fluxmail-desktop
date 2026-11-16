@@ -20,17 +20,8 @@ minimumReleaseAge: 10080
 minimumReleaseAgeExclude:
   - '@fluxmail/*'
   - fluxmail
-  - nodemailer@10.3.1
-  # Renovate security update: electron@43.8.1
-  - electron@43.8.1
-  # Renovate security update: colord@2.9.4
-  - colord@2.9.4
   # Renovate security update: dompurify@3.4.17
   - dompurify@3.4.17
-  # Renovate security update: vitest@4.1.11
-  - vitest@4.1.11
-  # Renovate security update: zod@4.6.6
-  - zod@4.6.6
   # Renovate security update: vite@7.3.7
   - vite@7.3.7
 minimumReleaseAgeExcludePrune: true
