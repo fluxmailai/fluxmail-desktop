@@ -47,10 +47,12 @@ test("collapses read messages when a conversation opens", async () => {
 
     // Reopening shows only the newest message, since every message has now been read.
     await page
-      .locator(".thread-row", { hasText: "Re: Founding AE candidate, Riley Nguyen" })
+      .locator(".thread-row", { hasText: "Founding AE candidate, Riley Nguyen" })
       .locator(".thread-open")
       .click();
-    await expect(page.getByRole("heading", { name: /Founding AE candidate/ })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Founding AE candidate, Riley Nguyen", exact: true }),
+    ).toBeVisible();
     await row.locator(".thread-open").click();
     await expect(page.getByRole("heading", { name: subject })).toBeVisible();
     await expect(page.locator(".message-card")).toHaveCount(3);

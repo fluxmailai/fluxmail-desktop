@@ -235,6 +235,23 @@ export function isReplySubject(subject: string | undefined): boolean {
   return REPLY_SUBJECT.test(subject ?? "");
 }
 
+/**
+ * Reply prefixes at the start of a subject, after any list tags, for display. Leaves out the
+ * one-letter Italian "R:", which an ordinary subject can start with.
+ */
+const DISPLAY_REPLY_PREFIXES = new RegExp(
+  String.raw`^(\s*(?:\[[^\]]*\]\s*)*)(?:(?:re|aw|sv|antw|odp|rif|ynt|回复|答复|回覆|返信)(?:\s*[\[(]\d+[\])])?\s*[:：]\s*)+`,
+  "i",
+);
+
+/**
+ * The subject without its leading "Re:" prefixes, the way other mail clients title a
+ * conversation. List tags such as "[Support]" and forward prefixes stay.
+ */
+export function displaySubject(subject: string | undefined): string {
+  return (subject ?? "").replace(DISPLAY_REPLY_PREFIXES, "$1").trim();
+}
+
 /** Removes quote markers a sender put in a message, so only Fluxmail's own markers hide text. */
 export function clearQuotedHistoryMarkers(root: HTMLElement): void {
   for (const element of root.querySelectorAll(`[${QUOTED_HISTORY_ATTRIBUTE}]`))

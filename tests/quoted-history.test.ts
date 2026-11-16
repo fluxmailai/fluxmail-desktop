@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildDemoMessages } from "../src/main/demo-fixtures";
 import { buildEmailDocument } from "../src/renderer/components/EmailHtml";
 import {
+  displaySubject,
   isForwardedSubject,
   isReplySubject,
   markQuotedHistory,
@@ -362,6 +363,23 @@ describe("subject prefixes", () => {
     expect(isReplySubject("AW: Pläne")).toBe(true);
     expect(isReplySubject("[EXT] RE: Plans")).toBe(true);
     expect(isReplySubject("Regarding plans")).toBe(false);
+  });
+
+  it("drops reply prefixes from displayed subjects", () => {
+    expect(displaySubject("Re: Plans")).toBe("Plans");
+    expect(displaySubject("RE: re: Re[2]: Plans")).toBe("Plans");
+    expect(displaySubject("Re(3): Plans")).toBe("Plans");
+    expect(displaySubject("AW: Sv: Pläne")).toBe("Pläne");
+    expect(displaySubject("回复：计划")).toBe("计划");
+    expect(displaySubject("[Support] Re: Export")).toBe("[Support] Export");
+    expect(displaySubject("Re: [Support] Export")).toBe("[Support] Export");
+    expect(displaySubject("Re: Fwd: Plans")).toBe("Fwd: Plans");
+    expect(displaySubject("Fwd: Plans")).toBe("Fwd: Plans");
+    expect(displaySubject("Regarding plans")).toBe("Regarding plans");
+    expect(displaySubject("Revenue: Q3")).toBe("Revenue: Q3");
+    expect(displaySubject("R: language notes")).toBe("R: language notes");
+    expect(displaySubject("Re:")).toBe("");
+    expect(displaySubject(undefined)).toBe("");
   });
 });
 

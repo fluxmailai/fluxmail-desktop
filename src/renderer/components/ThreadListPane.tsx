@@ -44,6 +44,7 @@ import {
   SelectionCheckbox,
   type ContextMenuEntry,
 } from "./Controls";
+import { displaySubject } from "../email/quoted-reply";
 import { MailSearchBox } from "./MailSearchBox";
 import { OverlayScrollbar } from "./OverlayScrollbar";
 
@@ -413,7 +414,7 @@ export function ThreadRow({
             {thread.draft && !thread.pendingSend ? (
               <span className="thread-draft-label">{draftLabel}</span>
             ) : null}
-            <span className="truncate">{thread.subject || "(no subject)"}</span>
+            <span className="truncate">{displaySubject(thread.subject) || "(no subject)"}</span>
             {thread.messageCount > 1 ? (
               <span className="message-count">{thread.messageCount}</span>
             ) : null}
