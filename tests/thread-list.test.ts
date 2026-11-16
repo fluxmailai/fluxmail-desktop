@@ -64,6 +64,35 @@ describe("thread row activation", () => {
     expect(getByText("Draft").classList.contains("thread-draft-label")).toBe(true);
   });
 
+  it("titles a conversation without reply prefixes but keeps a typed draft subject", () => {
+    const props = {
+      active: false,
+      checked: false,
+      onOpen: vi.fn(),
+      onCheck: vi.fn(),
+      moveLabel: "Archive",
+      restore: false,
+      onToggleRead: vi.fn(),
+      onStar: vi.fn(),
+    };
+    const received = render(
+      createElement(ThreadRow, {
+        ...props,
+        thread: { ...testThread, subject: "Re: Plans", messageCount: 2 },
+      }),
+    );
+    expect(received.container.querySelector(".subject-line .truncate")!.textContent).toBe("Plans");
+    received.unmount();
+
+    const draft = render(
+      createElement(ThreadRow, {
+        ...props,
+        thread: { ...testThread, subject: "Re: Plans", draft: true, messageCount: 1 },
+      }),
+    );
+    expect(draft.container.querySelector(".subject-line .truncate")!.textContent).toBe("Re: Plans");
+  });
+
   it("labels drafts in the scheduled mailbox", () => {
     const { getByText, queryByRole } = render(
       createElement(ThreadRow, {

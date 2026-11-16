@@ -1,4 +1,4 @@
-import type { ComposeAttachment, MailMessage } from "../../shared/contracts";
+import type { ComposeAttachment, MailMessage, ThreadSummary } from "../../shared/contracts";
 import {
   BLOCK_TAGS,
   collapseWhitespace,
@@ -216,17 +216,21 @@ const FORWARDED_SUBJECT = new RegExp(
   `${SUBJECT_TAGS}(?:fwd?|wg|tr|rv|enc|vb|vl|vs|doorst|pd|i|转发|轉寄|転送)\\s*[:：]`,
   "i",
 );
-// Reply prefixes that no ordinary subject starts with, so a displayed subject can drop them.
+// "Re" and its Chinese and Japanese forms mark a reply wherever they appear.
 const PLAIN_REPLY_PREFIXES = "re|回复|答复|回覆|返信";
+// Localized reply prefixes that an ordinary subject can also start with, such as "SV: trip".
+const LOCALIZED_REPLY_PREFIXES = "aw|sv|antw|odp|rif|ynt";
 // "Re[2]:" and "Re(2):" count the replies.
 const REPLY_COUNTER = String.raw`(?:\s*[\[(]\d+[\])])?`;
 const REPLY_SUBJECT = new RegExp(
-  `${SUBJECT_TAGS}(?:${PLAIN_REPLY_PREFIXES}|aw|sv|antw|odp|r|rif|ynt)${REPLY_COUNTER}\\s*[:：]`,
+  `${SUBJECT_TAGS}(?:(?:${PLAIN_REPLY_PREFIXES})${REPLY_COUNTER}|${LOCALIZED_REPLY_PREFIXES}|r)\\s*[:：]`,
   "i",
 );
-// A list tag or a reply prefix, the parts that can come before a subject's text in any order.
-const DISPLAY_SUBJECT_TOKEN = String.raw`\[[^\]]*\]|(?:${PLAIN_REPLY_PREFIXES})${REPLY_COUNTER}\s*[:：]+`;
-const DISPLAY_SUBJECT_HEAD = new RegExp(String.raw`^(?:\s*(?:${DISPLAY_SUBJECT_TOKEN}))*\s*`, "i");
+// A list tag, or a reply prefix whose ASCII colon ends a word, so "re:Invent" is not one. The
+// group captures a plain prefix.
+const SUBJECT_HEAD_TOKEN = String.raw`\s*(?:\[[^\]]*\]|(?:(${PLAIN_REPLY_PREFIXES})${REPLY_COUNTER}|${LOCALIZED_REPLY_PREFIXES})\s*(?:：|:(?=[\s:：]|$))+)`;
+const SUBJECT_HEAD = new RegExp(`^(?:${SUBJECT_HEAD_TOKEN})*`, "i");
+const SUBJECT_HEAD_TOKENS = new RegExp(SUBJECT_HEAD_TOKEN, "gi");
 /** How much text next to the quote the forwarded-message checks read. */
 const FORWARD_CONTEXT = 200;
 const ORIGINAL_MESSAGE_LINE = /^-{2,}\s*Original Message\s*-{2,}$/i;
@@ -243,19 +247,30 @@ export function isReplySubject(subject: string | undefined): boolean {
 }
 
 /**
- * The subject without its "Re:" prefixes, the way other mail clients title a conversation.
- * List tags such as "[Support]" stay, once each, and so does "Fwd:". Localized prefixes such as
- * "AW:" or "SV:" stay too, since an ordinary subject can start with the same letters. A subject
- * that is nothing but prefixes is returned as it is.
+ * The subject without its leading reply prefixes, the way other mail clients title a
+ * conversation. List tags such as "[Support]" and "Fwd:" stay. Localized prefixes such as "AW:"
+ * go only in a chain with "Re:", since an ordinary subject can start with the same letters.
  */
 export function displaySubject(subject: string | undefined): string {
   const text = (subject ?? "").trim();
-  const head = DISPLAY_SUBJECT_HEAD.exec(text)![0];
-  const rest = text.slice(head.length);
-  const tokens = head.match(new RegExp(DISPLAY_SUBJECT_TOKEN, "gi")) ?? [];
-  const tags = tokens.filter((token) => token.startsWith("["));
-  if (!rest || tags.length === tokens.length) return text;
-  return [...new Set(tags), rest].join(" ");
+  const head = SUBJECT_HEAD.exec(text)![0];
+  if (![...head.matchAll(SUBJECT_HEAD_TOKENS)].some((token) => token[1])) return text;
+  const tags = head.replace(SUBJECT_HEAD_TOKENS, (token) =>
+    token.trimStart().startsWith("[") ? token : "",
+  );
+  return (tags + text.slice(head.length)).trim();
+}
+
+/**
+ * The title for a conversation: its subject without reply prefixes, or the subject as typed
+ * while the conversation is only unsent mail.
+ */
+export function conversationTitle(
+  subject: string | undefined,
+  thread: Pick<ThreadSummary, "draft" | "messageCount" | "pendingSend">,
+): string {
+  const unsent = thread.pendingSend || (thread.draft && thread.messageCount === 1);
+  return (unsent ? subject?.trim() : displaySubject(subject)) || "(no subject)";
 }
 
 /** Removes quote markers a sender put in a message, so only Fluxmail's own markers hide text. */

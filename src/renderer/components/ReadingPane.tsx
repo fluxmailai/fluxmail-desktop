@@ -62,7 +62,7 @@ import {
 } from "../mail-actions";
 import type { TrackingPixelDetail } from "../email/tracking-pixels";
 import { quotedReplyCitation } from "../../shared/quoted-reply";
-import { displaySubject, quotedReplyTarget } from "../email/quoted-reply";
+import { conversationTitle, quotedReplyTarget } from "../email/quoted-reply";
 import {
   hasUnsendableReplyRecipient,
   replyRecipients,
@@ -627,11 +627,7 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
       <div className="conversation-scroll-shell">
         <div ref={handleScrollerRef} className="conversation-scroll">
           <div className="conversation-title">
-            <h1>
-              {(detail.messages.every((message) => message.flags.draft)
-                ? detail.subject
-                : displaySubject(detail.subject)) || "(no subject)"}
-            </h1>
+            <h1>{conversationTitle(detail.subject, thread)}</h1>
             {thread.labels.filter((label) => labels.includes(label)).length ? (
               <div className="thread-labels">
                 {thread.labels
