@@ -118,8 +118,8 @@ importers:
         specifier: 5.2.0
         version: 5.2.0(supports-color@8.1.1)(vite@7.3.7(@types/node@24.19.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(yaml@2.9.0))
       electron:
-        specifier: 43.8.6
-        version: 43.8.6(supports-color@8.1.1)
+        specifier: 43.8.7
+        version: 43.8.7(supports-color@8.1.1)
       jsdom:
         specifier: 29.1.1
         version: 29.1.1
@@ -2297,8 +2297,8 @@ packages:
   electron-to-chromium@1.5.389:
     resolution: {integrity: sha512-cEto7aeOqBfU1D+c5py5pE+ooscKE75JifxLBdFUZsqAxRS6y7kebtxAZvICszSl05gPjYHDTjY+lXpyGvpJbg==}
 
-  electron@43.8.6:
-    resolution: {integrity: sha512-2k3n5cjPHZqYTOn8iaJrm4fmb/QsvciomLD7PG9IECd0N/jr8Hxcu6Z/3mvMRrtXWCOp/i8qm5ZAcSnUzAa5Mw==}
+  electron@43.8.7:
+    resolution: {integrity: sha512-F3Z7xEYlS62Re9Y2WCRhB8jFIkDwpUO7wjJ85l8NpPEgQ/CEyBvwtYEsNY2lioT7VOWi2vBrnMckCvXBkq+Cnw==}
     engines: {node: '>= 22.12.0'}
     hasBin: true
 
@@ -2313,10 +2313,6 @@ packages:
 
   encode-utf8@1.0.3:
     resolution: {integrity: sha512-ucAnuBEhUK4boH2HjVYG5Q2mQyPorvv0u/ocS+zhdw0S8AlHYY+GOFhP1Gio5z4icpP2ivFSvhtFjQi8+T9ppw==}
-
-  encoding-japanese@2.2.0:
-    resolution: {integrity: sha512-EuJWwlHPZ1LbADuKTClvHtwbaFn4rOD+dRAbWysqEOXRc2Uui0hJInNJrsdH0c+OhJA4nrCBdSkW4DD5YxAo6A==}
-    engines: {node: '>=8.10.0'}
 
   encoding-japanese@2.3.0:
     resolution: {integrity: sha512-eQyh1vzHz13DUkZcJO+0IOAoKXRQwKV5IBffeuYsWZyRLGiSzfzXObCqWvqFXdX0UU8qOk+lBXbkUhMCpdJe4Q==}
@@ -2679,10 +2675,6 @@ packages:
     resolution: {integrity: sha512-LXxE6ND+JHhDPYtPFt3oeWrjxFPrnRZCZ4At6lpbi1ZDSAN7bmGET9s53vvARbxT93p+xpeDUbc/nCR4C+7vcw==}
     engines: {node: '>=14'}
 
-  googleapis-common@8.0.2:
-    resolution: {integrity: sha512-5MXeQzIZaqCH7B+HJWqhQm946VARpZep6acbWSr/fcgF2cQANq7allgX+i/G0EqF0WyUxB277gtWMzRYHMl9tg==}
-    engines: {node: '>=18.0.0'}
-
   googleapis-common@8.0.3:
     resolution: {integrity: sha512-7g1yzQKx0mmNTjiK0H9dJ8eqKqDBveES9vLHeg5neb3BMQy/d1oQefIMhIpOVT8a+f+LOcixMEdRbFIW/cQUJw==}
     engines: {node: '>=18'}
@@ -2989,9 +2981,6 @@ packages:
 
   libbase64@1.3.0:
     resolution: {integrity: sha512-GgOXd0Eo6phYgh0DJtjQ2tO8dc0IVINtZJeARPeiIJqge+HdsWSuaDTe8ztQ7j/cONByDZ3zeB325AHiv5O0dg==}
-
-  libmime@5.4.1:
-    resolution: {integrity: sha512-0wHGhsofo9IdQPenr3BBHXuxcwMq4atFUTsZ9Ogc1OvI5h4rUdDIrBQEN9JHjCXfDMrE59LUMJWsTD82wTYk8A==}
 
   libmime@5.4.3:
     resolution: {integrity: sha512-di9BoDabBUMqjeD/wGj+hHpSgdqAph5ui7w6OdY6NpzU6O6VFLQsMOg9tqCjm/zf9OHzAM9EZxSOF7uIb8O8Hw==}
@@ -5227,7 +5216,7 @@ snapshots:
       '@fluxmail/core': 0.26.0
       iconv-lite: 0.7.3
       imapflow: 1.7.8
-      libmime: 5.4.1
+      libmime: 5.4.3
       nodemailer: 10.3.1
       postal-mime: 2.7.5
 
@@ -6720,7 +6709,7 @@ snapshots:
 
   electron-to-chromium@1.5.389: {}
 
-  electron@43.8.6(supports-color@8.1.1):
+  electron@43.8.7(supports-color@8.1.1):
     dependencies:
       '@electron-internal/extract-zip': 1.0.4
       '@electron/get': 5.0.0(supports-color@8.1.1)
@@ -6736,8 +6725,6 @@ snapshots:
 
   encode-utf8@1.0.3:
     optional: true
-
-  encoding-japanese@2.2.0: {}
 
   encoding-japanese@2.3.0: {}
 
@@ -7216,17 +7203,6 @@ snapshots:
 
   google-logging-utils@1.1.4: {}
 
-  googleapis-common@8.0.2(supports-color@8.1.1):
-    dependencies:
-      extend: 3.0.2
-      gaxios: 7.1.3(supports-color@8.1.1)
-      google-auth-library: 10.5.0(supports-color@8.1.1)
-      google-logging-utils: 1.1.3
-      qs: 6.15.3
-      url-template: 2.0.8
-    transitivePeerDependencies:
-      - supports-color
-
   googleapis-common@8.0.3(supports-color@8.1.1):
     dependencies:
       extend: 3.0.2
@@ -7241,7 +7217,7 @@ snapshots:
   googleapis@173.0.0(supports-color@8.1.1):
     dependencies:
       google-auth-library: 10.5.0(supports-color@8.1.1)
-      googleapis-common: 8.0.2(supports-color@8.1.1)
+      googleapis-common: 8.0.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -7546,13 +7522,6 @@ snapshots:
       package-json: 10.0.1
 
   libbase64@1.3.0: {}
-
-  libmime@5.4.1:
-    dependencies:
-      encoding-japanese: 2.2.0
-      iconv-lite: 0.7.3
-      libbase64: 1.3.0
-      libqp: 2.1.1
 
   libmime@5.4.3:
     dependencies:
