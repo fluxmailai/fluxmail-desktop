@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { buildDemoMessages } from "../src/main/demo-fixtures";
 import { buildEmailDocument } from "../src/renderer/components/EmailHtml";
 import {
+  conversationTitle,
+  displaySubject,
   isForwardedSubject,
   isReplySubject,
   markQuotedHistory,
@@ -361,7 +363,62 @@ describe("subject prefixes", () => {
     expect(isReplySubject("Re: Plans")).toBe(true);
     expect(isReplySubject("AW: Pläne")).toBe(true);
     expect(isReplySubject("[EXT] RE: Plans")).toBe(true);
+    expect(isReplySubject("Re[2]: Plans")).toBe(true);
+    expect(isReplySubject("SV: Planer")).toBe(true);
+    expect(isReplySubject("SV [1]: trip")).toBe(false);
     expect(isReplySubject("Regarding plans")).toBe(false);
+  });
+
+  it("drops reply prefixes from displayed subjects", () => {
+    expect(displaySubject("Re: Plans")).toBe("Plans");
+    expect(displaySubject("RE: re: Re[2]: Plans")).toBe("Plans");
+    expect(displaySubject("Re(3): Plans")).toBe("Plans");
+    expect(displaySubject("Re:: Plans")).toBe("Plans");
+    expect(displaySubject("回复：计划")).toBe("计划");
+    expect(displaySubject("Re: AW: Re: Pläne")).toBe("Pläne");
+    expect(displaySubject("[Support] Re: Export")).toBe("[Support] Export");
+    expect(displaySubject("Re: [Support] Export")).toBe("[Support] Export");
+    expect(displaySubject("[EXT] RE: [EXT] RE: Plans")).toBe("[EXT] [EXT] Plans");
+    expect(displaySubject("Re: [list] Re: Topic")).toBe("[list] Topic");
+    expect(displaySubject("Re: [x] [ ] [ ] checklist")).toBe("[x] [ ] [ ] checklist");
+    expect(displaySubject("Re: [WIP]fix thing")).toBe("[WIP]fix thing");
+    expect(displaySubject("Re: [Action required]")).toBe("[Action required]");
+    expect(displaySubject("Re: Fwd: Plans")).toBe("Fwd: Plans");
+    expect(displaySubject("Re: ")).toBe("");
+    expect(displaySubject("Re:Re: Plans")).toBe("Plans");
+    expect(displaySubject("RE:[EXT] Plans")).toBe("[EXT] Plans");
+    expect(displaySubject("Re: AW:Re: Pläne")).toBe("Pläne");
+  });
+
+  it("keeps subjects that only look like replies", () => {
+    expect(displaySubject("Fwd: Plans")).toBe("Fwd: Plans");
+    expect(displaySubject("Regarding plans")).toBe("Regarding plans");
+    expect(displaySubject("Revenue: Q3")).toBe("Revenue: Q3");
+    expect(displaySubject("re:Invent 2026: Registration is open")).toBe(
+      "re:Invent 2026: Registration is open",
+    );
+    expect(displaySubject("Re:Zero season 3")).toBe("Re:Zero season 3");
+    expect(displaySubject("RE:Plans")).toBe("RE:Plans");
+    expect(displaySubject("RIF: what employees need to know")).toBe(
+      "RIF: what employees need to know",
+    );
+    expect(displaySubject("AW: Pläne")).toBe("AW: Pläne");
+    expect(displaySubject("R: language notes")).toBe("R: language notes");
+    expect(displaySubject("[a]  [b] Plans")).toBe("[a]  [b] Plans");
+    expect(displaySubject(undefined)).toBe("");
+  });
+
+  it("titles unsent conversations with the typed subject", () => {
+    const received = { draft: false, messageCount: 2 };
+    expect(conversationTitle("Re: Plans", received)).toBe("Plans");
+    expect(conversationTitle("Re: Plans", { draft: true, messageCount: 2 })).toBe("Plans");
+    expect(conversationTitle("Re: Plans", { draft: true, messageCount: 1 })).toBe("Re: Plans");
+    expect(conversationTitle("Re: Plans", { ...received, pendingSend: true })).toBe("Plans");
+    expect(
+      conversationTitle("Re: Plans", { draft: false, messageCount: 1, pendingSend: true }),
+    ).toBe("Re: Plans");
+    expect(conversationTitle("Re: ", received)).toBe("(no subject)");
+    expect(conversationTitle("", { draft: true, messageCount: 1 })).toBe("(no subject)");
   });
 });
 
