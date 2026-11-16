@@ -309,6 +309,7 @@ export function ThreadListPane(props: Props) {
                       : undefined
                   }
                   draftLabel={props.view === "scheduled" ? "Scheduled" : "Draft"}
+                  showTypedSubject={props.view === "drafts" || props.view === "scheduled"}
                   onToggleRead={() =>
                     void props.onModify({ type: thread.unread ? "markRead" : "markUnread" }, [
                       thread,
@@ -362,6 +363,7 @@ export function ThreadRow({
   restore,
   onMove,
   draftLabel = "Draft",
+  showTypedSubject = false,
   onToggleRead,
   onStar,
   contextOpen = false,
@@ -376,6 +378,8 @@ export function ThreadRow({
   restore: boolean;
   onMove?: () => void;
   draftLabel?: string;
+  /** Shows the subject as written, "Re:" included, for unsent mail. */
+  showTypedSubject?: boolean;
   onToggleRead(): void;
   onStar(): void;
   contextOpen?: boolean;
@@ -414,7 +418,10 @@ export function ThreadRow({
             {thread.draft && !thread.pendingSend ? (
               <span className="thread-draft-label">{draftLabel}</span>
             ) : null}
-            <span className="truncate">{displaySubject(thread.subject) || "(no subject)"}</span>
+            <span className="truncate">
+              {(showTypedSubject ? thread.subject : displaySubject(thread.subject)) ||
+                "(no subject)"}
+            </span>
             {thread.messageCount > 1 ? (
               <span className="message-count">{thread.messageCount}</span>
             ) : null}

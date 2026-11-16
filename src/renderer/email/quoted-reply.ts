@@ -216,10 +216,17 @@ const FORWARDED_SUBJECT = new RegExp(
   `${SUBJECT_TAGS}(?:fwd?|wg|tr|rv|enc|vb|vl|vs|doorst|pd|i|转发|轉寄|転送)\\s*[:：]`,
   "i",
 );
+// Reply prefixes that no ordinary subject starts with, so a displayed subject can drop them.
+const PLAIN_REPLY_PREFIXES = "re|回复|答复|回覆|返信";
+// "Re[2]:" and "Re(2):" count the replies.
+const REPLY_COUNTER = String.raw`(?:\s*[\[(]\d+[\])])?`;
 const REPLY_SUBJECT = new RegExp(
-  `${SUBJECT_TAGS}(?:re|aw|sv|antw|odp|r|rif|ynt|回复|答复|回覆|返信)\\s*[:：]`,
+  `${SUBJECT_TAGS}(?:${PLAIN_REPLY_PREFIXES}|aw|sv|antw|odp|r|rif|ynt)${REPLY_COUNTER}\\s*[:：]`,
   "i",
 );
+// A list tag or a reply prefix, the parts that can come before a subject's text in any order.
+const DISPLAY_SUBJECT_TOKEN = String.raw`\[[^\]]*\]|(?:${PLAIN_REPLY_PREFIXES})${REPLY_COUNTER}\s*[:：]+`;
+const DISPLAY_SUBJECT_HEAD = new RegExp(String.raw`^(?:\s*(?:${DISPLAY_SUBJECT_TOKEN}))*\s*`, "i");
 /** How much text next to the quote the forwarded-message checks read. */
 const FORWARD_CONTEXT = 200;
 const ORIGINAL_MESSAGE_LINE = /^-{2,}\s*Original Message\s*-{2,}$/i;
@@ -236,20 +243,19 @@ export function isReplySubject(subject: string | undefined): boolean {
 }
 
 /**
- * Reply prefixes at the start of a subject, after any list tags, for display. Leaves out the
- * one-letter Italian "R:", which an ordinary subject can start with.
- */
-const DISPLAY_REPLY_PREFIXES = new RegExp(
-  String.raw`^(\s*(?:\[[^\]]*\]\s*)*)(?:(?:re|aw|sv|antw|odp|rif|ynt|回复|答复|回覆|返信)(?:\s*[\[(]\d+[\])])?\s*[:：]\s*)+`,
-  "i",
-);
-
-/**
- * The subject without its leading "Re:" prefixes, the way other mail clients title a
- * conversation. List tags such as "[Support]" and forward prefixes stay.
+ * The subject without its "Re:" prefixes, the way other mail clients title a conversation.
+ * List tags such as "[Support]" stay, once each, and so does "Fwd:". Localized prefixes such as
+ * "AW:" or "SV:" stay too, since an ordinary subject can start with the same letters. A subject
+ * that is nothing but prefixes is returned as it is.
  */
 export function displaySubject(subject: string | undefined): string {
-  return (subject ?? "").replace(DISPLAY_REPLY_PREFIXES, "$1").trim();
+  const text = (subject ?? "").trim();
+  const head = DISPLAY_SUBJECT_HEAD.exec(text)![0];
+  const rest = text.slice(head.length);
+  const tokens = head.match(new RegExp(DISPLAY_SUBJECT_TOKEN, "gi")) ?? [];
+  const tags = tokens.filter((token) => token.startsWith("["));
+  if (!rest || tags.length === tokens.length) return text;
+  return [...new Set(tags), rest].join(" ");
 }
 
 /** Removes quote markers a sender put in a message, so only Fluxmail's own markers hide text. */

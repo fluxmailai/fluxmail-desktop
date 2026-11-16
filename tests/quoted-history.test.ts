@@ -362,6 +362,8 @@ describe("subject prefixes", () => {
     expect(isReplySubject("Re: Plans")).toBe(true);
     expect(isReplySubject("AW: Pläne")).toBe(true);
     expect(isReplySubject("[EXT] RE: Plans")).toBe(true);
+    expect(isReplySubject("Re[2]: Plans")).toBe(true);
+    expect(isReplySubject("SV: Planer")).toBe(true);
     expect(isReplySubject("Regarding plans")).toBe(false);
   });
 
@@ -369,16 +371,27 @@ describe("subject prefixes", () => {
     expect(displaySubject("Re: Plans")).toBe("Plans");
     expect(displaySubject("RE: re: Re[2]: Plans")).toBe("Plans");
     expect(displaySubject("Re(3): Plans")).toBe("Plans");
-    expect(displaySubject("AW: Sv: Pläne")).toBe("Pläne");
+    expect(displaySubject("Re:: Plans")).toBe("Plans");
     expect(displaySubject("回复：计划")).toBe("计划");
     expect(displaySubject("[Support] Re: Export")).toBe("[Support] Export");
     expect(displaySubject("Re: [Support] Export")).toBe("[Support] Export");
+    expect(displaySubject("[EXT] RE: [EXT] RE: Plans")).toBe("[EXT] Plans");
+    expect(displaySubject("Re: [list] Re: Topic")).toBe("[list] Topic");
     expect(displaySubject("Re: Fwd: Plans")).toBe("Fwd: Plans");
+  });
+
+  it("keeps subjects that only look like replies", () => {
     expect(displaySubject("Fwd: Plans")).toBe("Fwd: Plans");
+    expect(displaySubject("[a:b]  [a:b] Plans")).toBe("[a:b]  [a:b] Plans");
     expect(displaySubject("Regarding plans")).toBe("Regarding plans");
     expect(displaySubject("Revenue: Q3")).toBe("Revenue: Q3");
+    expect(displaySubject("RIF: what employees need to know")).toBe(
+      "RIF: what employees need to know",
+    );
+    expect(displaySubject("SV: Silicon Valley trip")).toBe("SV: Silicon Valley trip");
     expect(displaySubject("R: language notes")).toBe("R: language notes");
-    expect(displaySubject("Re:")).toBe("");
+    expect(displaySubject("Re:")).toBe("Re:");
+    expect(displaySubject("[Support] Re:")).toBe("[Support] Re:");
     expect(displaySubject(undefined)).toBe("");
   });
 });
