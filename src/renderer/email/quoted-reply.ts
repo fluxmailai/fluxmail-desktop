@@ -233,6 +233,10 @@ const NEXT_REPLY_PREFIX = String.raw`(?:${PLAIN_REPLY_PREFIXES})${REPLY_COUNTER}
 const SUBJECT_HEAD_TOKEN = String.raw`\s*(?:\[[^\]]*\]|${REPLY_PREFIX}\s*(?:：|:(?=[\s:：[]|$|${NEXT_REPLY_PREFIX}))+)`;
 const SUBJECT_HEAD = new RegExp(`^(?:${SUBJECT_HEAD_TOKEN})*`, "i");
 const SUBJECT_HEAD_TOKENS = new RegExp(SUBJECT_HEAD_TOKEN, "gi");
+// "Fwd:" or "Fw:" after any list tags, with the same colon rule as a reply prefix. The localized
+// forward prefixes stay out, since an ordinary subject can start with "I:" or "PD:".
+const FORWARD_PREFIX = String.raw`fwd?\s*(?:：|:(?=[\s:：[]|$|fwd?\s*[:：]))`;
+const FORWARD_SUBJECT_HEAD = new RegExp(`${SUBJECT_TAGS}${FORWARD_PREFIX}`, "i");
 /** How much text next to the quote the forwarded-message checks read. */
 const FORWARD_CONTEXT = 200;
 const ORIGINAL_MESSAGE_LINE = /^-{2,}\s*Original Message\s*-{2,}$/i;
@@ -256,11 +260,29 @@ export function isReplySubject(subject: string | undefined): boolean {
 export function displaySubject(subject: string | undefined): string {
   const text = (subject ?? "").trim();
   const head = SUBJECT_HEAD.exec(text)![0];
-  if (![...head.matchAll(SUBJECT_HEAD_TOKENS)].some((token) => token[1])) return text;
+  if (!headHasReplyPrefix(head)) return text;
   const tags = head.replace(SUBJECT_HEAD_TOKENS, (token) =>
     token.trimStart().startsWith("[") ? token : "",
   );
   return (tags + text.slice(head.length)).trim();
+}
+
+/** True when the leading tags and prefixes of a subject include a plain reply prefix. */
+function headHasReplyPrefix(head: string): boolean {
+  return [...head.matchAll(SUBJECT_HEAD_TOKENS)].some((token) => token[1]);
+}
+
+/**
+ * The subject for a reply. A subject that already starts with a reply prefix, after any list tags
+ * such as "[EXT] RE:" or "Re[2]:", is kept as written, so replies don't stack "Re:" prefixes.
+ */
+export function replySubject(subject: string): string {
+  return headHasReplyPrefix(SUBJECT_HEAD.exec(subject)![0]) ? subject : `Re: ${subject}`;
+}
+
+/** The subject for a forward, kept as written when it already starts with "Fwd:" or "Fw:". */
+export function forwardSubject(subject: string): string {
+  return FORWARD_SUBJECT_HEAD.test(subject) ? subject : `Fwd: ${subject}`;
 }
 
 /**

@@ -156,6 +156,34 @@ describe("background page reloads", () => {
   });
 });
 
+describe("reply seed subject", () => {
+  const summary = (subject: string) =>
+    replySeed({
+      id: "thread",
+      accountId: "account",
+      accountEmail: "me@example.com",
+      subject,
+      senderName: "Sam",
+      senderEmail: "sam@example.com",
+      snippet: "",
+      date: "2026-07-16T12:00:00Z",
+      unread: false,
+      starred: false,
+      draft: false,
+      hasAttachments: false,
+      messageCount: 1,
+      labels: [],
+      folderRoles: ["inbox"],
+    }).subject;
+
+  it("does not stack a reply prefix after list tags or a reply counter", () => {
+    expect(summary("[EXT] RE: Plans")).toBe("[EXT] RE: Plans");
+    expect(summary("Re[2]: Plans")).toBe("Re[2]: Plans");
+    expect(summary("Plans")).toBe("Re: Plans");
+    expect(summary("re:Invent recap")).toBe("Re: re:Invent recap");
+  });
+});
+
 describe("reply recipients", () => {
   it("waits for thread details instead of prefilling the summary sender", () => {
     expect(
