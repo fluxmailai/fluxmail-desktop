@@ -385,6 +385,9 @@ describe("subject prefixes", () => {
     expect(displaySubject("Re: [Action required]")).toBe("[Action required]");
     expect(displaySubject("Re: Fwd: Plans")).toBe("Fwd: Plans");
     expect(displaySubject("Re: ")).toBe("");
+    expect(displaySubject("Re:Re: Plans")).toBe("Plans");
+    expect(displaySubject("RE:[EXT] Plans")).toBe("[EXT] Plans");
+    expect(displaySubject("Re: AW:Re: Pläne")).toBe("Pläne");
   });
 
   it("keeps subjects that only look like replies", () => {
@@ -395,6 +398,7 @@ describe("subject prefixes", () => {
       "re:Invent 2026: Registration is open",
     );
     expect(displaySubject("Re:Zero season 3")).toBe("Re:Zero season 3");
+    expect(displaySubject("RE:Plans")).toBe("RE:Plans");
     expect(displaySubject("RIF: what employees need to know")).toBe(
       "RIF: what employees need to know",
     );
@@ -409,7 +413,10 @@ describe("subject prefixes", () => {
     expect(conversationTitle("Re: Plans", received)).toBe("Plans");
     expect(conversationTitle("Re: Plans", { draft: true, messageCount: 2 })).toBe("Plans");
     expect(conversationTitle("Re: Plans", { draft: true, messageCount: 1 })).toBe("Re: Plans");
-    expect(conversationTitle("Re: Plans", { ...received, pendingSend: true })).toBe("Re: Plans");
+    expect(conversationTitle("Re: Plans", { ...received, pendingSend: true })).toBe("Plans");
+    expect(
+      conversationTitle("Re: Plans", { draft: false, messageCount: 1, pendingSend: true }),
+    ).toBe("Re: Plans");
     expect(conversationTitle("Re: ", received)).toBe("(no subject)");
     expect(conversationTitle("", { draft: true, messageCount: 1 })).toBe("(no subject)");
   });

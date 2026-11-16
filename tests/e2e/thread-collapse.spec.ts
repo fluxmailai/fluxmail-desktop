@@ -46,8 +46,10 @@ test("collapses read messages when a conversation opens", async () => {
     await expect(page.locator(".message-card .message-body")).toHaveCount(2);
 
     // Reopening shows only the newest message, since every message has now been read.
-    const replyRow = page.locator(".thread-row", {
-      hasText: "Founding AE candidate, Riley Nguyen",
+    const replyRow = page.locator(".thread-row").filter({
+      has: page.locator(".subject-line .truncate", {
+        hasText: /^Founding AE candidate, Riley Nguyen$/,
+      }),
     });
     await expect(replyRow.locator(".subject-line .truncate")).toHaveText(
       "Founding AE candidate, Riley Nguyen",

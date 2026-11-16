@@ -226,9 +226,11 @@ const REPLY_SUBJECT = new RegExp(
   `${SUBJECT_TAGS}(?:(?:${PLAIN_REPLY_PREFIXES})${REPLY_COUNTER}|${LOCALIZED_REPLY_PREFIXES}|r)\\s*[:：]`,
   "i",
 );
-// A list tag, or a reply prefix whose ASCII colon ends a word, so "re:Invent" is not one. The
-// group captures a plain prefix.
-const SUBJECT_HEAD_TOKEN = String.raw`\s*(?:\[[^\]]*\]|(?:(${PLAIN_REPLY_PREFIXES})${REPLY_COUNTER}|${LOCALIZED_REPLY_PREFIXES})\s*(?:：|:(?=[\s:：]|$))+)`;
+// A list tag, or a reply prefix. An ASCII colon must end a word or run into another prefix or
+// tag, so "re:Invent" is not one but "Re:Re: Plans" is. The group captures a plain prefix.
+const REPLY_PREFIX = `(?:(${PLAIN_REPLY_PREFIXES})${REPLY_COUNTER}|${LOCALIZED_REPLY_PREFIXES})`;
+const NEXT_REPLY_PREFIX = String.raw`(?:${PLAIN_REPLY_PREFIXES})${REPLY_COUNTER}\s*[:：]|(?:${LOCALIZED_REPLY_PREFIXES})\s*[:：]`;
+const SUBJECT_HEAD_TOKEN = String.raw`\s*(?:\[[^\]]*\]|${REPLY_PREFIX}\s*(?:：|:(?=[\s:：[]|$|${NEXT_REPLY_PREFIX}))+)`;
 const SUBJECT_HEAD = new RegExp(`^(?:${SUBJECT_HEAD_TOKEN})*`, "i");
 const SUBJECT_HEAD_TOKENS = new RegExp(SUBJECT_HEAD_TOKEN, "gi");
 /** How much text next to the quote the forwarded-message checks read. */
@@ -269,7 +271,7 @@ export function conversationTitle(
   subject: string | undefined,
   thread: Pick<ThreadSummary, "draft" | "messageCount" | "pendingSend">,
 ): string {
-  const unsent = thread.pendingSend || (thread.draft && thread.messageCount === 1);
+  const unsent = thread.messageCount === 1 && (thread.pendingSend || thread.draft);
   return (unsent ? subject?.trim() : displaySubject(subject)) || "(no subject)";
 }
 
