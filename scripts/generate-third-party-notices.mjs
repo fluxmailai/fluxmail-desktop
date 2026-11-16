@@ -108,38 +108,38 @@ const reviewedLicenseConflicts = new Map([
     },
   ],
   [
-    "@posthog/core@1.63.1",
+    "@posthog/core@1.65.0",
     {
       license: "MIT",
       bundledLicense: "Apache-2.0",
       file: "posthog-core.txt",
       sources: [
-        "https://github.com/PostHog/posthog-js/blob/5ce520f2e44c68ff782f4417840e37ef9642b029/packages/core/package.json",
-        "https://github.com/PostHog/posthog-js/blob/5ce520f2e44c68ff782f4417840e37ef9642b029/LICENSE",
+        "https://github.com/PostHog/posthog-js/blob/7fbc6100595e221b721382dc0f06e77f987784df/packages/core/package.json",
+        "https://github.com/PostHog/posthog-js/blob/7fbc6100595e221b721382dc0f06e77f987784df/LICENSE",
       ],
     },
   ],
   [
-    "@posthog/types@1.419.0",
+    "@posthog/types@1.422.0",
     {
       license: "MIT",
       bundledLicense: "Apache-2.0",
       file: "posthog-core.txt",
       sources: [
-        "https://github.com/PostHog/posthog-js/blob/e1dc7f07f43bc80dfd135a70dd03e2c8eed1dade/packages/types/package.json",
-        "https://github.com/PostHog/posthog-js/blob/e1dc7f07f43bc80dfd135a70dd03e2c8eed1dade/LICENSE",
+        "https://github.com/PostHog/posthog-js/blob/7fbc6100595e221b721382dc0f06e77f987784df/packages/types/package.json",
+        "https://github.com/PostHog/posthog-js/blob/7fbc6100595e221b721382dc0f06e77f987784df/LICENSE",
       ],
     },
   ],
   [
-    "posthog-node@5.61.2",
+    "posthog-node@5.64.0",
     {
       license: "MIT",
       bundledLicense: "Apache-2.0",
       file: "posthog-core.txt",
       sources: [
-        "https://github.com/PostHog/posthog-js/blob/fb0c941cb11c3d6bc2d9b623e6db5f5bae55c122/packages/node/package.json",
-        "https://github.com/PostHog/posthog-js/blob/fb0c941cb11c3d6bc2d9b623e6db5f5bae55c122/LICENSE",
+        "https://github.com/PostHog/posthog-js/blob/7fbc6100595e221b721382dc0f06e77f987784df/packages/node/package.json",
+        "https://github.com/PostHog/posthog-js/blob/7fbc6100595e221b721382dc0f06e77f987784df/LICENSE",
       ],
     },
   ],

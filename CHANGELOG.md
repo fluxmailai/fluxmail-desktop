@@ -4,8 +4,13 @@ Fluxmail Desktop records user-facing changes in this file. The format follows [C
 
 ## [Unreleased](https://github.com/fluxmailai/fluxmail-desktop/compare/v0.9.1...HEAD)
 
+### Changed
+
+- Move the shared Fluxmail store to format 9 after making a backup. If you use the CLI with the same store, quit Desktop and stop any CLI processes before upgrading and use Fluxmail CLI 0.28.0 or later after the migration ([upgrade guide](https://fluxmail.ai/docs/upgrades/0.28.0/)).
+
 ### Fixed
 
+- Load message bodies from IMAP servers, such as Yahoo, that send body parts as quoted strings.
 - Block Sendinblue (Brevo) tracking pixels, which the tracker list missed because of a typo.
 - Stop crafted image URLs and stylesheets from freezing the app while it checks a message for trackers and remote images.
 
