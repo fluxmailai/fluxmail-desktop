@@ -5,10 +5,12 @@ import { buildEmailDocument } from "../src/renderer/components/EmailHtml";
 import {
   conversationTitle,
   displaySubject,
+  forwardSubject,
   isForwardedSubject,
   isReplySubject,
   markQuotedHistory,
   QUOTED_HISTORY_ATTRIBUTE,
+  replySubject,
   splitQuotedText,
 } from "../src/renderer/email/quoted-reply";
 
@@ -388,6 +390,10 @@ describe("subject prefixes", () => {
     expect(displaySubject("Re:Re: Plans")).toBe("Plans");
     expect(displaySubject("RE:[EXT] Plans")).toBe("[EXT] Plans");
     expect(displaySubject("Re: AW:Re: Pläne")).toBe("Pläne");
+    expect(displaySubject("Re[2]:Plans")).toBe("Plans");
+    expect(displaySubject("Re:2024 budget")).toBe("2024 budget");
+    expect(displaySubject("回复:计划")).toBe("计划");
+    expect(displaySubject("RE:FW: Plans")).toBe("FW: Plans");
   });
 
   it("keeps subjects that only look like replies", () => {
@@ -452,5 +458,68 @@ describe("demo fixture replies", () => {
       expect(markQuotedHistory(document.body), reply.id).toBe(true);
       expect(splitQuotedText(reply.body!.text!), reply.id).toBeDefined();
     }
+  });
+});
+
+describe("outgoing reply and forward subjects", () => {
+  it.each([
+    ["Re: Plans", "Re: Plans"],
+    ["RE: Plans", "RE: Plans"],
+    ["[EXT] RE: Plans", "[EXT] RE: Plans"],
+    ["[EXT] [Team] Re: Plans", "[EXT] [Team] Re: Plans"],
+    ["Re[2]: Plans", "Re[2]: Plans"],
+    ["Re(3): Plans", "Re(3): Plans"],
+    ["Re:Re: Plans", "Re:Re: Plans"],
+    ["Re[2]:Plans", "Re[2]:Plans"],
+    ["Re:2024 budget", "Re:2024 budget"],
+    ["Re:你好", "Re:你好"],
+    ["RE:FW: Plans", "RE:FW: Plans"],
+    ["Re:AW: Plans", "Re:AW: Plans"],
+    ["回复:计划", "回复:计划"],
+    ["AW: Re: Plans", "AW: Re: Plans"],
+    ["Re：Plans", "Re：Plans"],
+    ["回复：计划", "回复：计划"],
+    ["返信: 予定", "返信: 予定"],
+    ["  Re: Plans", "  Re: Plans"],
+    ["Re:", "Re:"],
+  ])("keeps the reply prefix already in %j", (subject, expected) => {
+    expect(replySubject(subject)).toBe(expected);
+  });
+
+  it.each([
+    ["Plans", "Re: Plans"],
+    ["[EXT] Plans", "Re: [EXT] Plans"],
+    ["R: Plans", "Re: R: Plans"],
+    ["re:Invent recap", "Re: re:Invent recap"],
+    ["RE:Plans", "Re: RE:Plans"],
+    ["Regarding plans", "Re: Regarding plans"],
+    ["AW: Plans", "Re: AW: Plans"],
+    ["Fwd: Re: Plans", "Re: Fwd: Re: Plans"],
+    ["", "Re: "],
+  ])("adds a reply prefix to %j", (subject, expected) => {
+    expect(replySubject(subject)).toBe(expected);
+  });
+
+  it.each([
+    ["Fwd: Plans", "Fwd: Plans"],
+    ["FW: Plans", "FW: Plans"],
+    ["[EXT] Fwd: Plans", "[EXT] Fwd: Plans"],
+    ["Fwd:Fwd: Plans", "Fwd:Fwd: Plans"],
+    ["Fwd：Plans", "Fwd：Plans"],
+    ["Fwd:Plans", "Fwd:Plans"],
+    ["FW:RE: Plans", "FW:RE: Plans"],
+  ])("keeps the forward prefix already in %j", (subject, expected) => {
+    expect(forwardSubject(subject)).toBe(expected);
+  });
+
+  it.each([
+    ["Plans", "Fwd: Plans"],
+    ["Re: Plans", "Fwd: Re: Plans"],
+    ["[EXT] RE: Fwd: Plans", "Fwd: [EXT] RE: Fwd: Plans"],
+    ["Fwdx: Plans", "Fwd: Fwdx: Plans"],
+    ["I: note", "Fwd: I: note"],
+    ["PD: budget", "Fwd: PD: budget"],
+  ])("adds a forward prefix to %j", (subject, expected) => {
+    expect(forwardSubject(subject)).toBe(expected);
   });
 });

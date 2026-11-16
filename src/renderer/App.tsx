@@ -35,6 +35,7 @@ import { SettingsDialog } from "./components/SettingsDialog";
 import { Onboarding } from "./components/Onboarding";
 import { FluxmailLogoMark } from "./components/FluxmailLogoMark";
 import { mailboxDeleteAction, mailboxMoveAction } from "./mail-actions";
+import { replySubject } from "./email/quoted-reply";
 import type { MailtoFields } from "../shared/mailto";
 
 const DEFAULT_PAGE_SIZE = 100;
@@ -1450,9 +1451,7 @@ function viewTitle(view: MailboxView, label?: string): string {
 export function replySeed(thread: ThreadSummary): ComposeSeed {
   return {
     accountId: thread.accountId,
-    subject: thread.subject.toLowerCase().startsWith("re:")
-      ? thread.subject
-      : `Re: ${thread.subject}`,
+    subject: replySubject(thread.subject),
     threadId: thread.id,
   };
 }

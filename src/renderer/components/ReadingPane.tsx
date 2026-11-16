@@ -62,7 +62,12 @@ import {
 } from "../mail-actions";
 import type { TrackingPixelDetail } from "../email/tracking-pixels";
 import { quotedReplyCitation } from "../../shared/quoted-reply";
-import { conversationTitle, quotedReplyTarget } from "../email/quoted-reply";
+import {
+  conversationTitle,
+  forwardSubject,
+  quotedReplyTarget,
+  replySubject,
+} from "../email/quoted-reply";
 import {
   hasUnsendableReplyRecipient,
   replyRecipients,
@@ -929,12 +934,8 @@ function InlineComposer({
 }) {
   const forwarding = mode === "forward";
   const initialSubject = forwarding
-    ? message.subject.toLowerCase().startsWith("fwd:")
-      ? message.subject
-      : `Fwd: ${message.subject}`
-    : message.subject.toLowerCase().startsWith("re:")
-      ? message.subject
-      : `Re: ${message.subject}`;
+    ? forwardSubject(message.subject)
+    : replySubject(message.subject);
   // A reply normally leaves its recipients to the engine, which derives them from the original
   // message. When a header address is not one a provider will accept, the reply names them
   // instead so the sender sees the address and can correct it.

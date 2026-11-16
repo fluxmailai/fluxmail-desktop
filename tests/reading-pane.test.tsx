@@ -1270,6 +1270,50 @@ describe("ReadingPane", () => {
     );
   });
 
+  it("does not stack Re: on a subject that already starts with a reply prefix", async () => {
+    const send = vi.fn(async () => ({ id: "sent-message", threadId: "thread-1" }));
+    Object.defineProperty(window, "fluxmail", {
+      configurable: true,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread: vi.fn(async () => detail("[EXT] RE: Plans", "message-1")) },
+        drafts: { send },
+        analytics: { trackFeature: vi.fn(async () => undefined) },
+      } as unknown as FluxmailDesktopApi,
+    });
+    renderPane(summary());
+
+    fireEvent.click(await screen.findByRole("button", { name: "Reply" }));
+    await writeReply("Thanks");
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith(expect.objectContaining({ subject: "[EXT] RE: Plans" })),
+    );
+  });
+
+  it("does not stack Fwd: on a subject that already starts with a forward prefix", async () => {
+    Object.defineProperty(window, "fluxmail", {
+      configurable: true,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread: vi.fn(async () => detail("[EXT] Fwd: Plans", "message-1")) },
+        attachments: {
+          prepare: vi.fn(async () => []),
+          release: vi.fn(async () => undefined),
+          pick: vi.fn(async () => []),
+        },
+      } as unknown as FluxmailDesktopApi,
+    });
+    renderPane(summary());
+
+    fireEvent.click(await screen.findByRole("button", { name: "Forward" }));
+
+    expect(((await screen.findByLabelText("Subject")) as HTMLInputElement).value).toBe(
+      "[EXT] Fwd: Plans",
+    );
+  });
+
   it("replies from the send-as address the message was sent to", async () => {
     const thread = detail("Alias subject", "message-1");
     thread.messages[0]!.to = [{ email: "team@example.com" }];
