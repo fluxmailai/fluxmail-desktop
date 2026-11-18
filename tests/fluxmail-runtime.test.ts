@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { EmailQuery, Message, ModifyAction } from "@fluxmail/core";
+import { EmailError, type EmailQuery, type Message, type ModifyAction } from "@fluxmail/core";
 import Database from "better-sqlite3";
 import {
   encryptString,
@@ -1055,6 +1055,99 @@ describe("FluxmailRuntime conversation mutations", () => {
       expect(cache.getThread(mailbox.id, "thread-1")?.messages).toMatchObject([first, second]);
     },
   );
+
+  it.each(["outlook", "imap"] as const)(
+    "archives the rest of an %s thread when Fluxmail refuses to archive its trashed message",
+    async (provider) => {
+      const cache = createCache();
+      const mailbox: AccountInfo = { ...account, provider };
+      const trashed = inboxMessage({ id: "message-1", threadId: "thread-1" });
+      trashed.folder = { id: "TRASH", name: "Trash", role: "trash" };
+      const second = inboxMessage({ id: "message-2", threadId: "thread-1" });
+      const getThread = vi.fn(async () => ({
+        id: "thread-1",
+        subject: second.subject,
+        messages: structuredClone([trashed, second]),
+      }));
+      cache.putThread(mailbox, await getThread());
+      const modify = vi.fn(async (_accountId: string, ids: string[]) => {
+        if (ids.includes(trashed.id)) {
+          throw new EmailError(
+            "invalid_request",
+            "These messages are in the trash. Restore them before moving or archiving them.",
+          );
+        }
+        second.folder = { id: "ARCHIVE", name: "Archive", role: "archive" };
+        return { succeededIds: ids };
+      });
+      const runtime = createRuntimeWithCache({
+        cache,
+        service: { getThread, modify },
+        accounts: [mailbox],
+        onCacheChanged: vi.fn(),
+      });
+
+      await runtime.modify(
+        [{ accountId: mailbox.id, threadId: "thread-1" }],
+        { type: "archive" },
+        false,
+      );
+
+      expect(modify.mock.calls.map(([, ids]) => ids)).toEqual([[trashed.id], [second.id]]);
+      expect(cache.getThread(mailbox.id, "thread-1")?.messages).toMatchObject([trashed, second]);
+    },
+  );
+
+  it("keeps a conversation whose permanent delete Fluxmail refuses", async () => {
+    const cache = createCache();
+    const message = inboxMessage({ id: "message-1", threadId: "thread-1" });
+    const getThread = vi.fn(async () => ({
+      id: "thread-1",
+      subject: message.subject,
+      messages: [structuredClone(message)],
+    }));
+    cache.putThread(account, await getThread());
+    const modify = vi.fn(async () => {
+      throw new EmailError("invalid_request", "Fluxmail can't delete these messages.");
+    });
+    const runtime = createRuntimeWithCache({
+      cache,
+      service: { getThread, modify },
+      accounts: [account],
+      onCacheChanged: vi.fn(),
+    });
+
+    await expect(
+      runtime.modify([{ accountId: account.id, threadId: "thread-1" }], { type: "delete" }, false),
+    ).rejects.toThrow("can't delete");
+    expect(cache.getThread(account.id, "thread-1")?.messages).toMatchObject([{ id: message.id }]);
+  });
+
+  it("still reports a modify request Fluxmail rejects for its size", async () => {
+    const cache = createCache();
+    const messages = Array.from({ length: 101 }, (_, index) =>
+      inboxMessage({ id: `message-${index}`, threadId: "thread-1" }),
+    );
+    const getThread = vi.fn(async () => ({
+      id: "thread-1",
+      subject: messages[0]!.subject,
+      messages: structuredClone(messages),
+    }));
+    cache.putThread(account, await getThread());
+    const modify = vi.fn(async () => {
+      throw new EmailError("invalid_request", "Modify between 1 and 100 distinct messages.");
+    });
+    const runtime = createRuntimeWithCache({
+      cache,
+      service: { getThread, modify },
+      accounts: [account],
+      onCacheChanged: vi.fn(),
+    });
+
+    await expect(
+      runtime.modify([{ accountId: account.id, threadId: "thread-1" }], { type: "archive" }, false),
+    ).rejects.toThrow("Modify between 1 and 100");
+  });
 
   it("lowers the provider's inbox unread count while a read change is in flight", async () => {
     const cache = createCache();

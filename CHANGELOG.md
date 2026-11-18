@@ -6,10 +6,13 @@ Fluxmail Desktop records user-facing changes in this file. The format follows [C
 
 ### Changed
 
+- Open IMAP folders and mark IMAP messages read or starred faster.
+- Ask Microsoft for permission to change mailbox settings when you add or reconnect an Outlook account, so the Fluxmail CLI and MCP server can create and delete its Outlook categories. Accounts you added earlier keep working, and need to be reconnected before the CLI or MCP server can change their categories. If you use your own Microsoft app, add the MailboxSettings.ReadWrite permission to it first.
 - Move the shared Fluxmail store to format 9 after making a backup. If you use the CLI with the same store, quit Desktop and stop any CLI processes before upgrading and use Fluxmail CLI 0.28.0 or later after the migration ([upgrade guide](https://fluxmail.ai/docs/upgrades/0.28.0/)).
 
 ### Fixed
 
+- Find new IMAP mail that arrives after Fluxmail has opened a folder of more than 2,000 messages.
 - Load message bodies from IMAP servers, such as Yahoo, that send body parts as quoted strings.
 - Block Sendinblue (Brevo) tracking pixels, which the tracker list missed because of a typo.
 - Stop crafted image URLs and stylesheets from freezing the app while it checks a message for trackers and remote images.
