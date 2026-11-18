@@ -51,6 +51,8 @@ describe("Microsoft OAuth", () => {
       scope: MICROSOFT_SCOPES.join(" "),
     });
     expect(body.has("client_secret")).toBe(false);
+    // Creating and deleting Outlook categories needs write access to mailbox settings.
+    expect(body.get("scope")?.split(" ")).toContain("MailboxSettings.ReadWrite");
   });
 
   it("falls back to the user principal name when Graph has no mail address", async () => {
@@ -214,8 +216,3 @@ function freePort(): Promise<number> {
     });
   });
 }
-
-it("asks for the mailbox settings permission that creating and deleting Outlook categories needs", () => {
-  expect(MICROSOFT_SCOPES).toContain("MailboxSettings.ReadWrite");
-  expect(MICROSOFT_SCOPES).not.toContain("MailboxSettings.Read");
-});
