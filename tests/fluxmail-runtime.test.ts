@@ -1098,6 +1098,31 @@ describe("FluxmailRuntime conversation mutations", () => {
     },
   );
 
+  it("keeps a conversation whose permanent delete Fluxmail refuses", async () => {
+    const cache = createCache();
+    const message = inboxMessage({ id: "message-1", threadId: "thread-1" });
+    const getThread = vi.fn(async () => ({
+      id: "thread-1",
+      subject: message.subject,
+      messages: [structuredClone(message)],
+    }));
+    cache.putThread(account, await getThread());
+    const modify = vi.fn(async () => {
+      throw new EmailError("invalid_request", "Fluxmail can't delete these messages.");
+    });
+    const runtime = createRuntimeWithCache({
+      cache,
+      service: { getThread, modify },
+      accounts: [account],
+      onCacheChanged: vi.fn(),
+    });
+
+    await expect(
+      runtime.modify([{ accountId: account.id, threadId: "thread-1" }], { type: "delete" }, false),
+    ).rejects.toThrow("can't delete");
+    expect(cache.getThread(account.id, "thread-1")?.messages).toMatchObject([{ id: message.id }]);
+  });
+
   it("still reports a modify request Fluxmail rejects for its size", async () => {
     const cache = createCache();
     const messages = Array.from({ length: 101 }, (_, index) =>

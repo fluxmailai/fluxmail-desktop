@@ -1926,8 +1926,10 @@ export class FluxmailRuntime {
       } catch (error) {
         // Fluxmail refuses a change that the mailbox rules out for every message in the call,
         // such as archiving a message in the trash, before changing any. Treat those messages
-        // as not changed, so the other messages in a thread still go through.
+        // as not changed, so the other messages in a thread still go through. A permanent delete
+        // keeps failing, because the cache drops deleted conversations without checking each id.
         if (
+          action !== "delete" &&
           ids.length >= 1 &&
           ids.length <= 100 &&
           isEmailError(error) &&
