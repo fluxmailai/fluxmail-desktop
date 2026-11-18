@@ -6,6 +6,7 @@ Fluxmail Desktop records user-facing changes in this file. The format follows [C
 
 ### Changed
 
+- Ask Microsoft for permission to change mailbox settings when you add or reconnect an Outlook account, so Fluxmail can create and delete Outlook categories. Accounts you added earlier keep working; reconnect one to create or delete its categories.
 - Move the shared Fluxmail store to format 9 after making a backup. If you use the CLI with the same store, quit Desktop and stop any CLI processes before upgrading and use Fluxmail CLI 0.28.0 or later after the migration ([upgrade guide](https://fluxmail.ai/docs/upgrades/0.28.0/)).
 
 ### Fixed
