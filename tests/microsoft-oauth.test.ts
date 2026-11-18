@@ -214,3 +214,8 @@ function freePort(): Promise<number> {
     });
   });
 }
+
+it("asks for the mailbox settings permission that creating and deleting Outlook categories needs", () => {
+  expect(MICROSOFT_SCOPES).toContain("MailboxSettings.ReadWrite");
+  expect(MICROSOFT_SCOPES).not.toContain("MailboxSettings.Read");
+});
