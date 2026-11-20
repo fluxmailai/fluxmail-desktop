@@ -347,3 +347,44 @@ describe("thread row context menu", () => {
     expect(onOpen).not.toHaveBeenCalled();
   });
 });
+
+describe("thread row senders", () => {
+  function renderRow(overrides: Partial<ThreadSummary>) {
+    return render(
+      createElement(ThreadRow, {
+        thread: { ...thread, ...overrides },
+        active: false,
+        checked: false,
+        onOpen: vi.fn(),
+        onCheck: vi.fn(),
+        moveLabel: "Archive",
+        restore: false,
+        onToggleRead: vi.fn(),
+        onStar: vi.fn(),
+      }),
+    ).container;
+  }
+
+  const participants = [
+    { label: "Steven", unread: true },
+    { label: "me", unread: false },
+  ];
+
+  it("bolds only the senders with unread messages", () => {
+    const container = renderRow({ senderName: "Steven, me", participants, unread: true });
+    const sender = container.querySelector(".sender")!;
+    expect(sender).toHaveTextContent("Steven, me");
+    expect(sender).toHaveClass("sender-split");
+    expect([...sender.querySelectorAll(".sender-unread")].map((node) => node.textContent)).toEqual([
+      "Steven",
+    ]);
+  });
+
+  it("shows plain text once the conversation is read", () => {
+    const container = renderRow({ senderName: "Steven, me", participants, unread: false });
+    const sender = container.querySelector(".sender")!;
+    expect(sender).toHaveTextContent("Steven, me");
+    expect(sender).not.toHaveClass("sender-split");
+    expect(sender.querySelector(".sender-unread")).toBeNull();
+  });
+});

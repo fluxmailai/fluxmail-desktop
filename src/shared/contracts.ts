@@ -178,6 +178,8 @@ export const threadSummarySchema = z.object({
   subject: z.string(),
   senderName: z.string(),
   senderEmail: z.string(),
+  /** The row's names, Gmail style, with unread senders marked. `senderName` is the same as text. */
+  participants: z.array(z.object({ label: z.string(), unread: z.boolean() })).optional(),
   snippet: z.string(),
   date: z.string(),
   unread: z.boolean(),

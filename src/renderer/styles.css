@@ -1131,6 +1131,14 @@ textarea:focus-visible,
   font-weight: 670;
 }
 
+.thread-row.unread .sender.sender-split {
+  font-weight: 520;
+}
+
+.thread-row.unread .sender .sender-unread {
+  font-weight: 670;
+}
+
 .thread-topline time {
   flex: 0 0 auto;
   color: var(--muted-faint);

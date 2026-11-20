@@ -29,6 +29,8 @@ import type {
   UndoSendDelaySeconds,
 } from "../shared/contracts";
 import type { DesktopAnalytics } from "./analytics";
+import { replyRecipients } from "../shared/reply-recipients";
+import { threadParticipants } from "../shared/thread-participants";
 import { buildQuotedReplyBody } from "./quoted-reply";
 import {
   buildDemoMessages,
@@ -362,6 +364,7 @@ export class FakeFluxmailRuntime {
                   recipients.map((recipient) => recipient.name || recipient.email).join(", ") ||
                   "No recipients",
                 senderEmail: recipients[0]?.email ?? "",
+                participants: undefined,
                 snippet: draft.snippet ?? "",
                 date: schedule.sendAt,
                 hasAttachments: Boolean(draft.attachments?.length),
@@ -400,7 +403,9 @@ export class FakeFluxmailRuntime {
         const query = input.query?.trim().toLowerCase();
         return (
           !query ||
-          `${thread.senderName} ${thread.subject} ${thread.snippet}`.toLowerCase().includes(query)
+          `${thread.senderName} ${this.participantSearch(thread.id)} ${thread.subject} ${thread.snippet}`
+            .toLowerCase()
+            .includes(query)
         );
       })
       .sort((left, right) =>
@@ -602,14 +607,24 @@ export class FakeFluxmailRuntime {
       this.messages = this.messages.filter((message) => message.draftId !== input.draftId);
       this.draftRecipientValues.delete(input.draftId);
     }
-    const id = `sent-${this.messages.length + 1}`;
+    const id = this.unusedMessageId("sent");
+    // Like the providers, file a reply in the thread it answers and derive missing recipients.
+    const replyTarget = input.replyToMessageId
+      ? this.messages.find((message) => message.id === input.replyToMessageId)
+      : undefined;
+    const derived =
+      replyTarget && !input.to.length
+        ? replyRecipients(account.email, replyTarget, Boolean(input.replyAll))
+        : undefined;
+    const cc = input.cc?.length ? input.cc : derived?.cc;
     this.messages.push({
       id,
-      threadId: id,
+      threadId: replyTarget?.threadId ?? id,
       accountId: account.id,
       folder: { id: "SENT", name: "Sent", role: "sent" },
-      from: { email: input.from ?? account.email },
-      to: input.to,
+      from: { name: account.displayName, email: input.from ?? account.email },
+      to: derived?.to ?? input.to,
+      ...(cc?.length ? { cc } : {}),
       subject: input.subject,
       date: new Date().toISOString(),
       snippet: input.text,
@@ -617,7 +632,7 @@ export class FakeFluxmailRuntime {
       flags: { read: true, starred: false, draft: false },
     });
     this.options.onCacheChanged();
-    return { id, threadId: id };
+    return { id, threadId: replyTarget?.threadId ?? id };
   }
 
   async schedule(
@@ -665,7 +680,7 @@ export class FakeFluxmailRuntime {
     delaySeconds?: Exclude<UndoSendDelaySeconds, 0>;
   }): Promise<{ scheduleId: string; draftId: string; sendAt: string } | undefined> {
     const original = this.messages.find((message) => message.id === input.messageId);
-    const id = `forwarded-${this.messages.length + 1}`;
+    const id = this.unusedMessageId("forwarded");
     const subject = input.subject || original?.subject || "";
     const scheduled = Boolean(input.sendAt || input.delaySeconds);
     const draftId = scheduled ? `test-draft-${id}` : undefined;
@@ -773,6 +788,20 @@ export class FakeFluxmailRuntime {
     return this.messages.length;
   }
 
+  /** The list length can shrink when a draft is sent, so skip numbers already in use. */
+  private unusedMessageId(prefix: string): string {
+    let number = this.messages.length + 1;
+    while (this.messages.some((message) => message.id === `${prefix}-${number}`)) number += 1;
+    return `${prefix}-${number}`;
+  }
+
+  private participantSearch(threadId: string): string {
+    const messages = this.messages
+      .filter((message) => message.threadId === threadId)
+      .sort((left, right) => Date.parse(left.date) - Date.parse(right.date));
+    return threadParticipants(messages, account.email).search;
+  }
+
   private summaries(): ThreadSummary[] {
     const messagesByThread = new Map<string, Message[]>();
     for (const message of this.messages) {
@@ -787,13 +816,15 @@ export class FakeFluxmailRuntime {
           (left, right) => Date.parse(left.date) - Date.parse(right.date),
         );
         const latest = sortedMessages.at(-1)!;
+        const participants = threadParticipants(sortedMessages, account.email);
         return {
           id: threadId,
           accountId: account.id,
           accountEmail: account.email,
           subject: latest.subject,
-          senderName: latest.from?.name || latest.from?.email || "Unknown sender",
-          senderEmail: latest.from?.email || "",
+          senderName: participants.text,
+          senderEmail: participants.email,
+          ...(participants.labels.length ? { participants: participants.labels } : {}),
           snippet: latest.snippet || "",
           date: latest.date,
           unread: sortedMessages.some((message) => !message.flags.read),

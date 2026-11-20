@@ -687,6 +687,175 @@ describe("MailCache", () => {
     upgraded.close();
   });
 
+  it("names the other sender and me when the account replied last", () => {
+    const cache = createCache();
+    cache.putMessages(primary, [
+      message({ id: "theirs", threadId: "reply-thread", date: "2026-07-15T09:00:00Z" }),
+      message({
+        id: "mine",
+        threadId: "reply-thread",
+        date: "2026-07-15T10:00:00Z",
+        from: { name: "Alex Rivera", email: primary.email },
+        to: [{ name: "Taylor", email: "taylor@example.net" }],
+        flags: { read: true, starred: false, draft: false },
+      }),
+    ]);
+
+    expect(cache.listThreads({ view: "inbox", offset: 0, limit: 20 })).toMatchObject([
+      {
+        id: "reply-thread",
+        senderName: "Taylor, me",
+        senderEmail: "taylor@example.net",
+        participants: [
+          { label: "Taylor", unread: true },
+          { label: "me", unread: false },
+        ],
+      },
+    ]);
+    expect(
+      cache.listThreads({ view: "search", query: "taylor", offset: 0, limit: 20 }),
+    ).toHaveLength(1);
+    cache.close();
+  });
+
+  it("finds a thread by a participant's full name after the row shortens it", () => {
+    const cache = createCache();
+    cache.putMessages(primary, [
+      message({
+        id: "first",
+        threadId: "group-thread",
+        from: { name: "Morgan Castellano", email: "morgan@example.net" },
+      }),
+      message({ id: "second", threadId: "group-thread", date: "2026-07-15T10:00:00Z" }),
+    ]);
+
+    expect(cache.listThreads({ view: "inbox", offset: 0, limit: 20 })[0]?.senderName).toBe(
+      "Morgan, Taylor",
+    );
+    expect(
+      cache.listThreads({ view: "search", query: "castellano", offset: 0, limit: 20 }),
+    ).toHaveLength(1);
+    cache.close();
+  });
+
+  it("keeps the me and To: labels out of the search index", () => {
+    const cache = createCache();
+    cache.putMessages(primary, [
+      message({ id: "theirs", threadId: "reply-thread", subject: "Budget" }),
+      message({
+        id: "mine",
+        threadId: "reply-thread",
+        subject: "Budget",
+        date: "2026-07-15T10:00:00Z",
+        from: { name: "Alex Rivera", email: primary.email },
+        folder: { id: "SENT", name: "Sent", role: "sent" },
+      }),
+      message({
+        id: "sent-only",
+        threadId: "sent-thread",
+        subject: "Budget",
+        from: { name: "Alex Rivera", email: primary.email },
+        to: [{ name: "Bob Stone", email: "bob@example.net" }],
+        folder: { id: "SENT", name: "Sent", role: "sent" },
+      }),
+    ]);
+
+    const search = (query: string) =>
+      cache.listThreads({ view: "search", query, offset: 0, limit: 20 }).map((row) => row.id);
+    expect(search("me")).toEqual([]);
+    expect(search("to")).toEqual([]);
+    expect(search("bob")).toEqual(["sent-thread"]);
+    cache.close();
+  });
+
+  it("bolds the whole row again after Mark read and Mark unread", () => {
+    const cache = createCache();
+    cache.putMessages(primary, [
+      message({ id: "theirs", threadId: "reply-thread" }),
+      message({
+        id: "mine",
+        threadId: "reply-thread",
+        date: "2026-07-15T10:00:00Z",
+        from: { name: "Alex Rivera", email: primary.email },
+        flags: { read: true, starred: false, draft: false },
+      }),
+    ]);
+    cache.applyAction(primary.id, "reply-thread", { type: "markRead" });
+    cache.applyAction(primary.id, "reply-thread", { type: "markUnread" });
+
+    expect(cache.listThreads({ view: "inbox", offset: 0, limit: 20 })[0]).toMatchObject({
+      unread: true,
+      participants: [
+        { label: "Taylor", unread: false },
+        { label: "me", unread: false },
+      ],
+    });
+    cache.close();
+  });
+
+  it("leaves the threads table in the shape older versions write", () => {
+    const { cache, directory } = createCacheWithDirectory();
+    cache.putMessages(primary, [message({ id: "theirs", threadId: "thread-a" })]);
+    cache.close();
+
+    const database = new Database(path.join(directory, "mail-cache.db"));
+    const columns = (
+      database.prepare("PRAGMA table_info(threads)").all() as Array<{
+        name: string;
+      }>
+    ).map((column) => column.name);
+    database.close();
+    // Older versions write a SELECT * row back into 15 positional placeholders.
+    expect(columns).toHaveLength(15);
+  });
+
+  it("rebuilds rows that named only the latest sender when upgrading", () => {
+    const { cache, directory } = createCacheWithDirectory();
+    cache.putMessages(primary, [
+      message({ id: "theirs", threadId: "old-thread" }),
+      message({
+        id: "mine",
+        threadId: "old-thread",
+        date: "2026-07-15T10:00:00Z",
+        from: { name: "Alex Rivera", email: primary.email },
+        folder: { id: "SENT", name: "Sent", role: "sent" },
+        flags: { read: true, starred: false, draft: false },
+      }),
+      message({ id: "archived", threadId: "archived-thread", date: "2026-07-15T11:00:00Z" }),
+    ]);
+    // An archive that hasn't synced yet lives only on the thread row, so the upgrade must keep it.
+    cache.applyAction(primary.id, "archived-thread", { type: "archive" });
+    cache.close();
+
+    const database = new Database(path.join(directory, "mail-cache.db"));
+    database.exec(`
+      DROP TABLE thread_participants;
+      UPDATE threads SET sender_name = 'Alex Rivera', sender_email = 'alex@example.com';
+      UPDATE cache_meta SET value = '6' WHERE key = 'schema_version';
+    `);
+    database.close();
+
+    const upgraded = new MailCache(directory, {
+      encrypt: (value) => Buffer.from(value),
+      decrypt: (value) => value.toString(),
+    });
+    expect(upgraded.listThreads({ view: "inbox", offset: 0, limit: 20 })).toMatchObject([
+      {
+        id: "old-thread",
+        senderName: "Taylor, me",
+        senderEmail: "taylor@example.net",
+        participants: [
+          { label: "Taylor", unread: true },
+          { label: "me", unread: false },
+        ],
+      },
+    ]);
+    expect(
+      upgraded.listThreads({ view: "search", query: "taylor", offset: 0, limit: 20 }),
+    ).toHaveLength(2);
+    upgraded.close();
+  });
+
   it("drops Keychain-encrypted bodies when upgrading without losing thread summaries", () => {
     const { cache, directory } = createCacheWithDirectory();
     cache.putThread(primary, {

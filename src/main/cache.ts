@@ -10,6 +10,7 @@ import type {
   ModifyActionInput,
   ThreadSummary,
 } from "../shared/contracts";
+import { threadParticipants, type ParticipantLabel } from "../shared/thread-participants";
 
 interface BodyCipher {
   encrypt(value: string): Buffer | undefined;
@@ -32,7 +33,21 @@ interface CachedThreadRow {
   message_count: number;
   labels_json: string;
   folder_roles_json: string;
+  /** From `thread_participants`: the row's names as `ParticipantLabel[]` JSON. */
+  participants_json?: string | null;
+  /** From `thread_participants`: full participant names and addresses for the search index. */
+  search_names?: string | null;
 }
+
+/**
+ * Participant columns live in their own table so that an older Fluxmail, which writes `threads`
+ * rows positionally from `SELECT *`, still works on a cache this version has opened.
+ */
+const THREAD_COLUMNS = `threads.*,
+  (SELECT participants_json FROM thread_participants p
+   WHERE p.account_id = threads.account_id AND p.thread_id = threads.thread_id) AS participants_json,
+  (SELECT search_names FROM thread_participants p
+   WHERE p.account_id = threads.account_id AND p.thread_id = threads.thread_id) AS search_names`;
 
 interface CachedMessageRow {
   account_id: string;
@@ -65,7 +80,7 @@ export interface ScheduledDraftRef {
   pendingSend?: boolean;
 }
 
-const CACHE_SCHEMA_VERSION = 6;
+const CACHE_SCHEMA_VERSION = 7;
 
 export class MailCache {
   readonly hasCachedMail: boolean;
@@ -109,6 +124,13 @@ export class MailCache {
         message_count INTEGER NOT NULL,
         labels_json TEXT NOT NULL,
         folder_roles_json TEXT NOT NULL,
+        PRIMARY KEY (account_id, thread_id)
+      );
+      CREATE TABLE IF NOT EXISTS thread_participants (
+        account_id TEXT NOT NULL,
+        thread_id TEXT NOT NULL,
+        participants_json TEXT NOT NULL,
+        search_names TEXT NOT NULL,
         PRIMARY KEY (account_id, thread_id)
       );
       CREATE INDEX IF NOT EXISTS threads_date ON threads(date DESC);
@@ -203,6 +225,8 @@ export class MailCache {
     }
     if (storedVersion < 5) this.db.prepare("DELETE FROM page_tokens").run();
     if (storedVersion < 6) this.db.prepare("DELETE FROM thread_bodies").run();
+    // Rows written before version 7 named only the latest sender.
+    if (storedVersion < 7) this.refreshThreadNames();
     this.db
       .prepare("INSERT OR REPLACE INTO cache_meta(key, value) VALUES ('schema_version', ?)")
       .run(String(CACHE_SCHEMA_VERSION));
@@ -228,6 +252,7 @@ export class MailCache {
         .prepare(
           `SELECT account_id FROM messages
            UNION SELECT account_id FROM threads
+           UNION SELECT account_id FROM thread_participants
            UNION SELECT account_id FROM folders
            UNION SELECT account_id FROM page_tokens
            UNION SELECT account_id FROM view_results
@@ -348,6 +373,7 @@ export class MailCache {
                 .filter(Boolean)
                 .join(", ") || "No recipients",
             senderEmail: recipients[0]?.email ?? "",
+            participants: undefined,
             snippet: message.snippet ?? "",
             date: schedule.sendAt,
             hasAttachments: Boolean(message.attachments?.length),
@@ -578,7 +604,7 @@ export class MailCache {
     params.push(input.limit, input.offset);
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
     const rows = this.db
-      .prepare(`SELECT * FROM threads ${where} ORDER BY date DESC LIMIT ? OFFSET ?`)
+      .prepare(`SELECT ${THREAD_COLUMNS} FROM threads ${where} ORDER BY date DESC LIMIT ? OFFSET ?`)
       .all(...params) as CachedThreadRow[];
     const scheduledByDraft = new Map(
       (input.scheduledDrafts ?? []).map((scheduled) => [
@@ -701,7 +727,7 @@ export class MailCache {
 
   snapshotThread(accountId: string, threadId: string): CachedThreadRow | undefined {
     return this.db
-      .prepare("SELECT * FROM threads WHERE account_id = ? AND thread_id = ?")
+      .prepare(`SELECT ${THREAD_COLUMNS} FROM threads WHERE account_id = ? AND thread_id = ?`)
       .get(accountId, threadId) as CachedThreadRow | undefined;
   }
 
@@ -894,6 +920,10 @@ export class MailCache {
       this.db
         .prepare("UPDATE threads SET unread = 1 WHERE account_id = ? AND thread_id = ?")
         .run(accountId, threadId);
+    // Messages keep their old read state until the next sync, so the per-sender marks would be
+    // stale. Clearing them makes an unread row bold as a whole, as Mark unread should.
+    if (action.type === "markRead" || action.type === "markUnread")
+      this.clearParticipantUnread(accountId, threadId);
     if (action.type === "star")
       this.db
         .prepare("UPDATE threads SET starred = 1 WHERE account_id = ? AND thread_id = ?")
@@ -1116,6 +1146,7 @@ export class MailCache {
       for (const table of [
         "messages",
         "threads",
+        "thread_participants",
         "thread_bodies",
         "folders",
         "page_tokens",
@@ -1284,10 +1315,14 @@ export class MailCache {
     ).map((row) => JSON.parse(row.payload_json) as Message);
     if (!messages.length) {
       this.hideThread(account.id, threadId);
+      this.db
+        .prepare("DELETE FROM thread_participants WHERE account_id = ? AND thread_id = ?")
+        .run(account.id, threadId);
       this.invalidateThreadBody(account.id, threadId);
       return;
     }
     const latest = messages.at(-1)!;
+    const participants = threadParticipants(messages, account.email);
     const labels = [...new Set(messages.flatMap((message) => message.labels ?? []))];
     const roles = [
       ...new Set(
@@ -1301,8 +1336,8 @@ export class MailCache {
       thread_id: threadId,
       account_email: account.email,
       subject: latest.subject || "(no subject)",
-      sender_name: latest.from?.name || latest.from?.email || "Unknown sender",
-      sender_email: latest.from?.email || "",
+      sender_name: participants.text,
+      sender_email: participants.email,
       snippet: latest.snippet || "",
       date: latest.date,
       unread: messages.some((message) => !message.flags.read) ? 1 : 0,
@@ -1312,8 +1347,55 @@ export class MailCache {
       message_count: messages.length,
       labels_json: JSON.stringify(labels),
       folder_roles_json: JSON.stringify(roles),
+      participants_json: JSON.stringify(participants.labels),
+      search_names: participants.search,
     };
     this.writeThread(row);
+  }
+
+  /**
+   * Fills in participant names for rows cached before they existed. It changes only the name and
+   * search data, because folder roles, labels and flags on a row can be ahead of its messages
+   * while an optimistic change waits for the next sync. It reads one thread's messages at a time.
+   */
+  private refreshThreadNames(): void {
+    const threads = this.db
+      .prepare("SELECT account_id, thread_id, account_email FROM threads")
+      .all() as Array<Pick<CachedThreadRow, "account_id" | "thread_id" | "account_email">>;
+    const readMessages = this.db.prepare(
+      "SELECT payload_json FROM messages WHERE account_id = ? AND thread_id = ? ORDER BY date ASC",
+    );
+    const updateNames = this.db.prepare(
+      "UPDATE threads SET sender_name = ?, sender_email = ? WHERE account_id = ? AND thread_id = ?",
+    );
+    this.db.transaction(() => {
+      this.db.prepare("DELETE FROM thread_participants").run();
+      for (const row of threads) {
+        const messages = (
+          readMessages.all(row.account_id, row.thread_id) as Array<{ payload_json: string }>
+        ).map((message) => JSON.parse(message.payload_json) as Message);
+        if (!messages.length) continue;
+        const participants = threadParticipants(messages, row.account_email);
+        updateNames.run(participants.text, participants.email, row.account_id, row.thread_id);
+        this.writeParticipants(
+          row.account_id,
+          row.thread_id,
+          JSON.stringify(participants.labels),
+          participants.search,
+        );
+      }
+      // The search table can't look up a key by index, so rebuild it in one pass instead.
+      this.db.exec(`
+        DELETE FROM thread_search;
+        INSERT INTO thread_search(key, subject, sender_name, sender_email, snippet)
+        SELECT threads.account_id || ':' || threads.thread_id, subject,
+               CASE WHEN p.participants_json IS NULL THEN sender_name ELSE p.search_names END,
+               sender_email, snippet
+        FROM threads
+        LEFT JOIN thread_participants p
+          ON p.account_id = threads.account_id AND p.thread_id = threads.thread_id;
+      `);
+    })();
   }
 
   private writeThread(row: CachedThreadRow): void {
@@ -1326,18 +1408,59 @@ export class MailCache {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       )
-      .run(...Object.values(row));
+      .run(
+        row.account_id,
+        row.thread_id,
+        row.account_email,
+        row.subject,
+        row.sender_name,
+        row.sender_email,
+        row.snippet,
+        row.date,
+        row.unread,
+        row.starred,
+        row.draft,
+        row.has_attachments,
+        row.message_count,
+        row.labels_json,
+        row.folder_roles_json,
+      );
+    if (row.participants_json != null && row.search_names != null)
+      this.writeParticipants(
+        row.account_id,
+        row.thread_id,
+        row.participants_json,
+        row.search_names,
+      );
     const key = `${row.account_id}:${row.thread_id}`;
     this.db.prepare("DELETE FROM thread_search WHERE key = ?").run(key);
     this.db
       .prepare(
         "INSERT INTO thread_search(key, subject, sender_name, sender_email, snippet) VALUES (?, ?, ?, ?, ?)",
       )
-      .run(key, row.subject, row.sender_name, row.sender_email, row.snippet);
+      .run(key, row.subject, searchableNames(row), row.sender_email, row.snippet);
+  }
+
+  private writeParticipants(
+    accountId: string,
+    threadId: string,
+    participantsJson: string,
+    searchNames: string,
+  ): void {
+    this.db
+      .prepare(
+        `INSERT OR REPLACE INTO thread_participants(
+           account_id, thread_id, participants_json, search_names
+         ) VALUES (?, ?, ?, ?)`,
+      )
+      .run(accountId, threadId, participantsJson, searchNames);
   }
 
   private deleteThread(accountId: string, threadId: string): void {
     this.hideThread(accountId, threadId);
+    this.db
+      .prepare("DELETE FROM thread_participants WHERE account_id = ? AND thread_id = ?")
+      .run(accountId, threadId);
     this.db
       .prepare("DELETE FROM messages WHERE account_id = ? AND thread_id = ?")
       .run(accountId, threadId);
@@ -1350,6 +1473,25 @@ export class MailCache {
     this.db
       .prepare("DELETE FROM thread_bodies WHERE account_id = ? AND thread_id = ?")
       .run(accountId, threadId);
+  }
+
+  private clearParticipantUnread(accountId: string, threadId: string): void {
+    const stored = this.db
+      .prepare(
+        "SELECT participants_json FROM thread_participants WHERE account_id = ? AND thread_id = ?",
+      )
+      .get(accountId, threadId) as { participants_json: string } | undefined;
+    if (!stored) return;
+    const labels = parseLabels(stored.participants_json).map((label) => ({
+      ...label,
+      unread: false,
+    }));
+    this.db
+      .prepare(
+        `UPDATE thread_participants SET participants_json = ?
+         WHERE account_id = ? AND thread_id = ?`,
+      )
+      .run(JSON.stringify(labels), accountId, threadId);
   }
 
   private hideThread(accountId: string, threadId: string): void {
@@ -1412,6 +1554,7 @@ function toSummary(row: CachedThreadRow): ThreadSummary {
     subject: row.subject,
     senderName: row.sender_name,
     senderEmail: row.sender_email,
+    ...participantsOf(row),
     snippet: row.snippet,
     date: row.date,
     unread: Boolean(row.unread),
@@ -1543,4 +1686,25 @@ function viewFolderRole(view: MailboxView): string | undefined {
   )
     return undefined;
   return view;
+}
+
+function participantsOf(row: CachedThreadRow): { participants?: ParticipantLabel[] } {
+  const labels = parseLabels(row.participants_json);
+  return labels.length ? { participants: labels } : {};
+}
+
+function parseLabels(json: string | null | undefined): ParticipantLabel[] {
+  try {
+    return json ? (JSON.parse(json) as ParticipantLabel[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The names the search index holds for a row: every participant's full name and address. The
+ * display text is left out, so the "me" and "To:" labels don't match a search for those words.
+ */
+function searchableNames(row: CachedThreadRow): string {
+  return row.participants_json != null ? (row.search_names ?? "") : row.sender_name;
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Virtuoso } from "react-virtuoso";
 import {
   Archive,
@@ -45,6 +45,7 @@ import {
   type ContextMenuEntry,
 } from "./Controls";
 import { conversationTitle } from "../email/quoted-reply";
+import { participantSeparator } from "../../shared/thread-participants";
 import { MailSearchBox } from "./MailSearchBox";
 import { OverlayScrollbar } from "./OverlayScrollbar";
 
@@ -352,6 +353,27 @@ export function ThreadListPane(props: Props) {
   );
 }
 
+/**
+ * The row's names. In an unread conversation, as in Gmail, only the people with unread messages are
+ * bold; when none are marked, such as right after Mark unread, the whole line is.
+ */
+function ThreadSenders({ thread }: { thread: ThreadSummary }) {
+  const labels = thread.participants;
+  if (!thread.unread || !labels?.some((label) => label.unread)) {
+    return <span className="sender truncate">{thread.senderName}</span>;
+  }
+  return (
+    <span className="sender sender-split truncate">
+      {labels.map((label, index) => (
+        <Fragment key={index}>
+          {participantSeparator(labels, index)}
+          <span className={label.unread ? "sender-unread" : undefined}>{label.label}</span>
+        </Fragment>
+      ))}
+    </span>
+  );
+}
+
 export function ThreadRow({
   thread,
   active,
@@ -407,7 +429,7 @@ export function ThreadRow({
         <div className="thread-content">
           <div className="thread-topline">
             {thread.unread ? <span className="unread-dot" aria-hidden="true" /> : null}
-            <span className="sender truncate">{thread.senderName}</span>
+            <ThreadSenders thread={thread} />
             <time>{formatListDate(thread.date)}</time>
           </div>
           <div className="subject-line">
