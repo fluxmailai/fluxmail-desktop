@@ -2,24 +2,37 @@
 
 Fluxmail Desktop records user-facing changes in this file. The format follows [Common Changelog](https://common-changelog.org/).
 
-## [Unreleased](https://github.com/fluxmailai/fluxmail-desktop/compare/v0.9.1...HEAD)
+## [Unreleased](https://github.com/fluxmailai/fluxmail-desktop/compare/v0.10.0...HEAD)
+
+## [0.10.0](https://github.com/fluxmailai/fluxmail-desktop/releases/tag/v0.10.0) - 2026-11-20
+
+_These artifacts use Fluxmail's self-signed certificate and have not been notarized by Apple, so macOS will require approval before opening the app._
 
 ### Changed
 
-- Open IMAP folders and mark IMAP messages read or starred faster.
-- Use less memory when sending or saving a draft with large attachments from a Gmail or IMAP account.
-- Ask Microsoft for permission to change mailbox settings when you add or reconnect an Outlook account, so the Fluxmail CLI and MCP server can create and delete its Outlook categories. Accounts you added earlier keep working, and need to be reconnected before the CLI or MCP server can change their categories. If you use your own Microsoft app, add the MailboxSettings.ReadWrite permission to it first.
-- Move the shared Fluxmail store to format 9 after making a backup. If you use the CLI with the same store, quit Desktop and stop any CLI processes before upgrading and use Fluxmail CLI 0.28.0 or later after the migration ([upgrade guide](https://fluxmail.ai/docs/upgrades/0.28.0/)).
+- Move the shared Fluxmail store to format 9 after making a backup. If you use the CLI with the same store, quit Desktop and stop any CLI processes before upgrading and use Fluxmail CLI 0.28.0 or later after the migration ([upgrade guide](https://fluxmail.ai/docs/upgrades/0.28.0/)) ([#129](https://github.com/fluxmailai/fluxmail-desktop/pull/129), [#139](https://github.com/fluxmailai/fluxmail-desktop/pull/139))
+- Ask Microsoft for permission to change mailbox settings when you add or reconnect an Outlook account, so the Fluxmail CLI and MCP server can create and delete its Outlook categories. Accounts you added earlier keep working, and need to be reconnected before the CLI or MCP server can change their categories. If you use your own Microsoft app, add the MailboxSettings.ReadWrite permission to it first ([#140](https://github.com/fluxmailai/fluxmail-desktop/pull/140))
+- Name everyone who wrote in a conversation on its row in the thread list, with your own messages shown as "me", instead of only the latest sender. A conversation only you wrote in shows "To:" and its recipients ([#141](https://github.com/fluxmailai/fluxmail-desktop/pull/141))
+- Hide "Re:" prefixes in conversation titles in the thread list and the conversation header ([#133](https://github.com/fluxmailai/fluxmail-desktop/pull/133))
+- Open IMAP folders and mark IMAP messages read or starred faster ([#140](https://github.com/fluxmailai/fluxmail-desktop/pull/140))
+- Use less memory when sending or saving a draft with large attachments from a Gmail or IMAP account ([#142](https://github.com/fluxmailai/fluxmail-desktop/pull/142))
+
+### Added
+
+- Collapse read messages when a conversation opens, and keep unread messages and the newest message expanded ([#121](https://github.com/fluxmailai/fluxmail-desktop/pull/121))
+- Hide the quoted history in replies behind a "Show quoted text" button ([#122](https://github.com/fluxmailai/fluxmail-desktop/pull/122))
 
 ### Fixed
 
-- Find new IMAP mail that arrives after Fluxmail has opened a folder of more than 2,000 messages.
-- Search every folder of an IMAP account with many folders, instead of stopping after the first ten.
-- Stop searching other folders for an IMAP conversation's messages after 25 seconds, and show the ones found by then.
-- Stop listing images embedded in an IMAP message as attachments.
-- Load message bodies from IMAP servers, such as Yahoo, that send body parts as quoted strings.
-- Block Sendinblue (Brevo) tracking pixels, which the tracker list missed because of a typo.
-- Stop crafted image URLs and stylesheets from freezing the app while it checks a message for trackers and remote images.
+- Stop adding a second prefix to reply and forward subjects, such as "Re: [EXT] RE: Plans" or "Fwd: FW: Plans" ([#134](https://github.com/fluxmailai/fluxmail-desktop/pull/134))
+- Find new IMAP mail that arrives after Fluxmail has opened a folder of more than 2,000 messages ([#140](https://github.com/fluxmailai/fluxmail-desktop/pull/140))
+- Search every folder of an IMAP account with many folders, instead of stopping after the first ten ([#142](https://github.com/fluxmailai/fluxmail-desktop/pull/142))
+- Stop searching other folders for an IMAP conversation's messages after 25 seconds, and show the ones found by then ([#142](https://github.com/fluxmailai/fluxmail-desktop/pull/142))
+- Stop listing images embedded in an IMAP message as attachments ([#142](https://github.com/fluxmailai/fluxmail-desktop/pull/142))
+- Load message bodies from IMAP servers, such as Yahoo, that send body parts as quoted strings ([#139](https://github.com/fluxmailai/fluxmail-desktop/pull/139))
+- Block Sendinblue (Brevo) tracking pixels, which the tracker list missed because of a typo ([#125](https://github.com/fluxmailai/fluxmail-desktop/pull/125))
+- Block trackers hidden in email stylesheets when images load directly ([#126](https://github.com/fluxmailai/fluxmail-desktop/pull/126))
+- Stop crafted image URLs and stylesheets from freezing the app while it checks a message for trackers and remote images or shows it in dark mode ([#125](https://github.com/fluxmailai/fluxmail-desktop/pull/125), [#126](https://github.com/fluxmailai/fluxmail-desktop/pull/126))
 
 ## [0.9.1](https://github.com/fluxmailai/fluxmail-desktop/releases/tag/v0.9.1) - 2026-11-11
 
