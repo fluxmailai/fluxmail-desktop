@@ -6,8 +6,8 @@ Fluxmail Desktop records user-facing changes in this file. The format follows [C
 
 ### Added
 
-- Check for updates from the About section in Settings, which also says when you have the latest version, when a check fails, and when a copy outside the Applications folder can't update
-- Show "Downloading update" at the bottom of the sidebar while a new version downloads. It changes to "Restart to update" when the update is ready to install
+- Check for updates from the About section in Settings, which also says when you have the latest version, when a check fails, and when a copy outside the Applications folder can't update ([#144](https://github.com/fluxmailai/fluxmail-desktop/pull/144))
+- Show "Downloading update" at the bottom of the sidebar while a new version downloads. It changes to "Restart to update" when the update is ready to install ([#144](https://github.com/fluxmailai/fluxmail-desktop/pull/144))
 
 ## [0.10.0](https://github.com/fluxmailai/fluxmail-desktop/releases/tag/v0.10.0) - 2026-11-20
 
