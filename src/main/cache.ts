@@ -499,13 +499,19 @@ export class MailCache {
       "DELETE FROM messages WHERE account_id = ? AND message_id = ?",
     );
     this.db.transaction(() => {
-      for (const messageId of cachedMessageIds)
-        if (!currentMessageIds.has(messageId)) removeMessage.run(account.id, messageId);
+      // A search that stopped at its time limit may have missed messages, so keep the ones
+      // it didn't return instead of treating them as gone.
+      if (!thread.incomplete)
+        for (const messageId of cachedMessageIds)
+          if (!currentMessageIds.has(messageId)) removeMessage.run(account.id, messageId);
       this.putMessages(account, thread.messages);
       this.rebuildThread(account, thread.id, options.mutationId);
     })();
     const normalized = this.toMailThread(account, thread);
-    const encrypted = this.cipher.encrypt(JSON.stringify(normalized));
+    // A partial conversation isn't kept as hydrated, so the reader fetches it again next time.
+    const encrypted = thread.incomplete
+      ? undefined
+      : this.cipher.encrypt(JSON.stringify(normalized));
     if (!encrypted) {
       this.invalidateThreadBody(account.id, thread.id);
       return normalized;

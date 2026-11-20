@@ -1162,6 +1162,30 @@ describe("MailCache", () => {
     cache.close();
   });
 
+  it("keeps cached messages an incomplete thread response left out", () => {
+    const cache = createCache();
+    const first = message({ id: "m1", threadId: "thread-a" });
+    const second = message({ id: "m2", threadId: "thread-a" });
+    cache.putThread(primary, {
+      id: "thread-a",
+      subject: "Thread",
+      messages: [first, second],
+    });
+
+    const partial = cache.putThread(primary, {
+      id: "thread-a",
+      subject: "Thread",
+      messages: [second],
+      incomplete: true,
+    });
+
+    expect(partial.messages.map((item) => item.id)).toEqual(["m2"]);
+    expect(cache.messageIds(primary.id, "thread-a").sort()).toEqual(["m1", "m2"]);
+    expect(cache.snapshotThread(primary.id, "thread-a")?.message_count).toBe(2);
+    expect(cache.hasThreadBody(primary.id, "thread-a")).toBe(false);
+    cache.close();
+  });
+
   it("notifies only after the initial inbox watermark", () => {
     const cache = createCache();
     const first = message({ id: "initial", threadId: "thread-a" });

@@ -2044,6 +2044,42 @@ describe("FluxmailRuntime conversation mutations", () => {
     expect(cache.messageIds(account.id, "thread-1")).toEqual(["second"]);
     expect(cache.snapshotThread(account.id, "thread-1")?.message_count).toBe(1);
   });
+
+  it("refuses to delete a conversation the provider returned only part of", async () => {
+    const cache = createCache();
+    const first = inboxMessage({ id: "first", threadId: "thread-1" });
+    const second = inboxMessage({
+      id: "second",
+      threadId: "thread-1",
+      date: "2026-07-16T13:00:00Z",
+    });
+    cache.putThread(account, {
+      id: "thread-1",
+      subject: "Hello",
+      messages: [first, second],
+    });
+    const modify = vi.fn();
+    const runtime = createRuntimeWithCache({
+      cache,
+      service: {
+        getThread: vi.fn(async () => ({
+          id: "thread-1",
+          subject: "Hello",
+          messages: [second],
+          incomplete: true,
+        })),
+        modify,
+      },
+      onCacheChanged: vi.fn(),
+    });
+
+    await expect(
+      runtime.modify([{ accountId: account.id, threadId: "thread-1" }], { type: "delete" }),
+    ).rejects.toThrow("couldn't find every message");
+
+    expect(modify).not.toHaveBeenCalled();
+    expect(cache.messageIds(account.id, "thread-1").sort()).toEqual(["first", "second"]);
+  });
 });
 
 describe("FluxmailRuntime draft mutations", () => {

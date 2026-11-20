@@ -18,6 +18,17 @@ const packagesCoveredByParentNotice = new Set([
 // Keep immutable upstream sources beside each fallback so license changes can be reviewed.
 const reviewedLicenseFallbacks = new Map([
   [
+    "@googleapis/gmail@18.0.0",
+    {
+      license: "Apache-2.0",
+      file: "googleapis-nodejs-client.txt",
+      sources: [
+        "https://github.com/googleapis/google-api-nodejs-client/blob/00487776c3500c407b031237be8de3e156380743/src/apis/gmail/package.json",
+        "https://github.com/googleapis/google-api-nodejs-client/blob/00487776c3500c407b031237be8de3e156380743/LICENSE",
+      ],
+    },
+  ],
+  [
     "@hono/zod-openapi@1.6.3",
     {
       license: "MIT",
