@@ -498,13 +498,25 @@ export class MailCache {
     const removeMessage = this.db.prepare(
       "DELETE FROM messages WHERE account_id = ? AND message_id = ?",
     );
+    // A search that stopped at its time limit may have missed messages, so an incomplete
+    // response adds and updates messages but never removes the ones it left out.
+    const keptMessages = thread.incomplete
+      ? (this.getThread(account.id, thread.id)?.messages ?? []).filter(
+          (message) => !currentMessageIds.has(message.id),
+        )
+      : [];
     this.db.transaction(() => {
-      for (const messageId of cachedMessageIds)
-        if (!currentMessageIds.has(messageId)) removeMessage.run(account.id, messageId);
+      if (!thread.incomplete)
+        for (const messageId of cachedMessageIds)
+          if (!currentMessageIds.has(messageId)) removeMessage.run(account.id, messageId);
       this.putMessages(account, thread.messages);
       this.rebuildThread(account, thread.id, options.mutationId);
     })();
     const normalized = this.toMailThread(account, thread);
+    if (keptMessages.length)
+      normalized.messages = [...keptMessages, ...normalized.messages].sort(
+        (left, right) => Date.parse(left.date) - Date.parse(right.date),
+      );
     const encrypted = this.cipher.encrypt(JSON.stringify(normalized));
     if (!encrypted) {
       this.invalidateThreadBody(account.id, thread.id);

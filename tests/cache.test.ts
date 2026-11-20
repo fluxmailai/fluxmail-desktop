@@ -1162,6 +1162,36 @@ describe("MailCache", () => {
     cache.close();
   });
 
+  it("keeps cached messages an incomplete thread response left out", () => {
+    const cache = createCache();
+    const first = message({ id: "m1", threadId: "thread-a", date: "2026-07-15T09:00:00Z" });
+    const second = message({ id: "m2", threadId: "thread-a", date: "2026-07-15T10:00:00Z" });
+    const third = message({ id: "m3", threadId: "thread-a", date: "2026-07-15T11:00:00Z" });
+    cache.putThread(primary, {
+      id: "thread-a",
+      subject: "Thread",
+      messages: [first, second],
+    });
+
+    const partial = cache.putThread(primary, {
+      id: "thread-a",
+      subject: "Thread",
+      messages: [{ ...second, flags: { ...second.flags, read: true } }, third],
+      incomplete: true,
+    });
+
+    expect(partial.messages.map((item) => item.id)).toEqual(["m1", "m2", "m3"]);
+    expect(partial.messages[1]?.flags.read).toBe(true);
+    expect(cache.getThread(primary.id, "thread-a")?.messages.map((item) => item.id)).toEqual([
+      "m1",
+      "m2",
+      "m3",
+    ]);
+    expect(cache.messageIds(primary.id, "thread-a").sort()).toEqual(["m1", "m2", "m3"]);
+    expect(cache.snapshotThread(primary.id, "thread-a")?.message_count).toBe(3);
+    cache.close();
+  });
+
   it("notifies only after the initial inbox watermark", () => {
     const cache = createCache();
     const first = message({ id: "initial", threadId: "thread-a" });
