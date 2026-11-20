@@ -5,6 +5,7 @@ import {
   Clock3,
   FileText,
   Inbox,
+  LoaderCircle,
   Mail,
   PanelLeft,
   Pencil,
@@ -16,7 +17,7 @@ import {
   Tag,
   Trash2,
 } from "lucide-react";
-import type { AccountInfo, FolderInfo, MailboxView } from "../../shared/contracts";
+import type { AccountInfo, FolderInfo, MailboxView, UpdateStatus } from "../../shared/contracts";
 import { KEYBOARD_SHORTCUTS } from "../shortcuts";
 import { IconButton, MenuButton } from "./Controls";
 import { OverlayScrollbar } from "./OverlayScrollbar";
@@ -31,7 +32,7 @@ interface SidebarProps {
   draftCount: number;
   scheduledCount: number;
   collapsed: boolean;
-  updateReady: boolean;
+  updateStatus: UpdateStatus;
   onAccountChange(value?: string): void;
   onViewChange(view: MailboxView, label?: string): void;
   onCompose(): void;
@@ -166,11 +167,25 @@ export function Sidebar(props: SidebarProps) {
         <OverlayScrollbar scroller={scroller} fadeClass="sidebar-fade" />
       </div>
       <div className="sidebar-footer">
-        {props.updateReady ? (
-          <button type="button" className="sidebar-update-button" onClick={props.onInstallUpdate}>
+        {props.updateStatus.state === "ready" ? (
+          <button
+            type="button"
+            className="sidebar-update-button"
+            title={
+              props.updateStatus.version
+                ? `Fluxmail ${props.updateStatus.version} is ready to install`
+                : undefined
+            }
+            onClick={props.onInstallUpdate}
+          >
             <RefreshCw size={14} />
             Restart to update
           </button>
+        ) : props.updateStatus.state === "downloading" ? (
+          <span className="sidebar-update-button sidebar-update-progress" role="status">
+            <LoaderCircle size={14} className="spin" />
+            Downloading update
+          </span>
         ) : null}
         <IconButton
           label="Settings"

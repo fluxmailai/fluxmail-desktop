@@ -17,6 +17,7 @@ import type {
   ModifyActionInput,
   ThreadPage,
   ThreadSummary,
+  UpdateStatus,
 } from "../shared/contracts";
 import { Sidebar } from "./components/Sidebar";
 import { ThreadListPane } from "./components/ThreadListPane";
@@ -71,7 +72,7 @@ export function App() {
   const [deliveryNotices, setDeliveryNotices] = useState<DeliveryNotice[]>([]);
   const [actionNotice, setActionNotice] = useState<string>();
   const [startupError, setStartupError] = useState<AppError>();
-  const [updateReady, setUpdateReady] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: "idle" });
   const [sidebarWidth, setSidebarWidth] = useState(228);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [listWidth, setListWidth] = useState(410);
@@ -447,9 +448,10 @@ export function App() {
   }, [accountId, bootstrap?.accounts.length, label, submittedSearch, view]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    void window.fluxmail.system.updateReady().then((ready) => {
-      if (ready) setUpdateReady(true);
-    });
+    void window.fluxmail.system
+      .updateStatus()
+      .then(setUpdateStatus)
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -459,7 +461,7 @@ export function App() {
       if (event.type === "view-sync-status") setViewSyncing(event.syncing);
       if (event.type === "accounts-changed" || event.type === "license-changed")
         void loadBootstrap();
-      if (event.type === "update-ready") setUpdateReady(true);
+      if (event.type === "update-status") setUpdateStatus(event.status);
       if (
         event.type === "find-in-conversation-requested" &&
         selectedThread &&
@@ -1014,10 +1016,19 @@ export function App() {
   ]);
 
   const installUpdate = () => void window.fluxmail.system.installUpdate();
+  const checkForUpdates = () =>
+    void window.fluxmail.system
+      .checkForUpdates()
+      .then(setUpdateStatus)
+      .catch(() => setUpdateStatus({ state: "failed", stage: "check" }));
 
   if (!bootstrap)
     return (
-      <Splash error={startupError} updateReady={updateReady} onInstallUpdate={installUpdate} />
+      <Splash
+        error={startupError}
+        updateReady={updateStatus.state === "ready"}
+        onInstallUpdate={installUpdate}
+      />
     );
   // The first account appears in bootstrap before the setup dialog finishes, so
   // keep onboarding up until the user dismisses any connection warnings.
@@ -1058,7 +1069,7 @@ export function App() {
         onAccountChange={changeAccount}
         onViewChange={changeView}
         onCompose={openCompose}
-        updateReady={updateReady}
+        updateStatus={updateStatus}
         onSettings={() => setSettingsOpen(true)}
         onInstallUpdate={installUpdate}
         onToggleCollapsed={() => setSidebarCollapsed((value) => !value)}
@@ -1176,6 +1187,9 @@ export function App() {
       {settingsOpen ? (
         <SettingsDialog
           state={bootstrap}
+          updateStatus={updateStatus}
+          onCheckForUpdates={checkForUpdates}
+          onInstallUpdate={installUpdate}
           onClose={() => setSettingsOpen(false)}
           onState={setBootstrap}
           onError={showError}

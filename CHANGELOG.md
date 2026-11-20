@@ -4,6 +4,11 @@ Fluxmail Desktop records user-facing changes in this file. The format follows [C
 
 ## [Unreleased](https://github.com/fluxmailai/fluxmail-desktop/compare/v0.10.0...HEAD)
 
+### Added
+
+- Check for updates from the About section in Settings, which also says when you have the latest version, when a check fails, and when a copy outside the Applications folder can't update ([#144](https://github.com/fluxmailai/fluxmail-desktop/pull/144))
+- Show "Downloading update" at the bottom of the sidebar while a new version downloads. It changes to "Restart to update" when the update is ready to install ([#144](https://github.com/fluxmailai/fluxmail-desktop/pull/144))
+
 ## [0.10.0](https://github.com/fluxmailai/fluxmail-desktop/releases/tag/v0.10.0) - 2026-11-20
 
 _These artifacts use Fluxmail's self-signed certificate and have not been notarized by Apple, so macOS will require approval before opening the app._

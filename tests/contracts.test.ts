@@ -15,6 +15,7 @@ import {
   outlookAppInputSchema,
   sendInputSchema,
   threadListInputSchema,
+  updateStatusSchema,
 } from "../src/shared/contracts";
 import {
   CUSTOM_GMAIL_SCOPES,
@@ -33,6 +34,21 @@ import { isAllowedFrameUrl } from "../src/main/ipc-security";
 describe("desktop contracts", () => {
   it("keeps Zod from generating code under the renderer CSP", () => {
     expect(z.config().jitless).toBe(true);
+  });
+
+  it("accepts update statuses and rejects unknown states and oversized versions", () => {
+    expect(updateStatusSchema.parse({ state: "ready", version: "0.11.0" })).toEqual({
+      state: "ready",
+      version: "0.11.0",
+    });
+    expect(updateStatusSchema.parse({ state: "unavailable", reason: "location" })).toEqual({
+      state: "unavailable",
+      reason: "location",
+    });
+    expect(updateStatusSchema.safeParse({ state: "installing" }).success).toBe(false);
+    expect(updateStatusSchema.safeParse({ state: "ready", version: "x".repeat(65) }).success).toBe(
+      false,
+    );
   });
 
   it("allows bodyless drafts but requires text before sending", () => {

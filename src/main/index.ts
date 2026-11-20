@@ -71,11 +71,13 @@ import {
   threadSchema,
   threadPrefetchInputSchema,
   threadTargetSchema,
+  updateStatusSchema,
   type AccountInfo,
   type AppEvent,
   type ComposeAttachment,
   type SyncState,
   type ThreadListInput,
+  type UpdateStatus,
 } from "../shared/contracts";
 import { parseExternalUrl } from "../shared/external-url";
 import { contextMenuTemplate } from "./context-menu";
@@ -85,11 +87,12 @@ import { MailCache } from "./cache";
 import { createCacheCipher } from "./cache-cipher";
 import { FluxmailRuntime, prepareFluxmailConfiguration } from "./fluxmail-runtime";
 import { FakeFluxmailRuntime } from "./fake-runtime";
+import { FakeUpdateClient } from "./fake-updater";
 import { isAllowedFrameUrl } from "./ipc-security";
 import { HostedImageRelay, HostedImageRelayAccess } from "./image-relay";
 import { createLaunchTimer } from "./performance";
 import { DesktopPreferences } from "./preferences";
-import { DesktopUpdater } from "./updater";
+import { DesktopUpdater, type UpdateClient } from "./updater";
 
 app.setName("Fluxmail");
 
@@ -114,6 +117,7 @@ let analytics: DesktopAnalytics | null = null;
 let cache: MailCache | null = null;
 let preferences: DesktopPreferences | null = null;
 let updater: DesktopUpdater | null = null;
+let unavailableUpdateStatus: UpdateStatus = { state: "unavailable", reason: "development" };
 let imageRelay: HostedImageRelay | null = null;
 let imageRelayAccess: HostedImageRelayAccess | null = null;
 let pollTimer: NodeJS.Timeout | undefined;
@@ -219,10 +223,24 @@ app.on("before-quit", (event) => {
 });
 
 function startUpdater(): void {
-  if (process.platform !== "darwin" || !app.isPackaged || !app.isInApplicationsFolder()) return;
-  updater = new DesktopUpdater(autoUpdater, {
+  const fakeUpdates = app.isPackaged ? undefined : process.env.FLUXMAIL_DESKTOP_FAKE_UPDATES;
+  let client: UpdateClient = autoUpdater;
+  if (fakeUpdates) {
+    const delayMs = Number(process.env.FLUXMAIL_DESKTOP_FAKE_UPDATE_DELAY_MS);
+    client = new FakeUpdateClient(
+      fakeUpdates,
+      () => app.exit(0),
+      delayMs > 0 ? { checkMs: delayMs, downloadMs: delayMs } : undefined,
+    );
+  } else if (process.platform !== "darwin" || !app.isPackaged) {
+    return;
+  } else if (!app.isInApplicationsFolder()) {
+    unavailableUpdateStatus = { state: "unavailable", reason: "location" };
+    return;
+  }
+  updater = new DesktopUpdater(client, {
     arch: process.arch,
-    onReady: () => sendEvent({ type: "update-ready" }),
+    onStatus: (status) => sendEvent({ type: "update-status", status }),
     onInstallFailed: () => {
       app.relaunch();
       app.exit(0);
@@ -657,7 +675,18 @@ function registerIpc(): void {
     windowCloseConfirmed = true;
     mainWindow.close();
   });
-  handle(IPC.systemUpdateReady, z.undefined(), z.boolean(), () => updater?.ready ?? false);
+  handle(
+    IPC.systemUpdateStatus,
+    z.undefined(),
+    updateStatusSchema,
+    () => updater?.status ?? unavailableUpdateStatus,
+  );
+  handle(
+    IPC.systemCheckForUpdates,
+    z.undefined(),
+    updateStatusSchema,
+    () => updater?.check() ?? unavailableUpdateStatus,
+  );
   handle(IPC.systemInstallUpdate, z.undefined(), z.void(), () => {
     if (!updater?.ready) return;
     if (!runtime || !analytics || !cache) {

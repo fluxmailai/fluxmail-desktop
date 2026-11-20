@@ -9,6 +9,7 @@ import type {
   MailThread,
   ModifyActionInput,
   ThreadSummary,
+  UpdateStatus,
 } from "../src/shared/contracts";
 
 const closeDraft = vi.hoisted(() => vi.fn<() => boolean | Promise<boolean>>(() => true));
@@ -19,12 +20,12 @@ const composeDeliverySequence = vi.hoisted(() => ({ current: 0 }));
 
 vi.mock("../src/renderer/components/Sidebar", () => ({
   Sidebar: ({
-    updateReady,
+    updateStatus,
     onInstallUpdate,
     onSettings,
     onViewChange,
   }: {
-    updateReady: boolean;
+    updateStatus: UpdateStatus;
     onInstallUpdate(): void;
     onSettings(): void;
     onViewChange(view: "starred" | "all" | "drafts" | "scheduled"): void;
@@ -36,7 +37,10 @@ vi.mock("../src/renderer/components/Sidebar", () => ({
       <button onClick={() => onViewChange("drafts")}>Drafts</button>
       <button onClick={() => onViewChange("scheduled")}>Scheduled</button>
       <button onClick={onSettings}>Settings</button>
-      {updateReady ? <button onClick={onInstallUpdate}>Restart to update</button> : null}
+      {updateStatus.state === "ready" ? (
+        <button onClick={onInstallUpdate}>Restart to update</button>
+      ) : null}
+      {updateStatus.state === "downloading" ? <span>Downloading update</span> : null}
     </aside>
   ),
 }));
@@ -211,9 +215,17 @@ vi.mock("../src/renderer/components/ComposeDialog", async () => {
 });
 
 vi.mock("../src/renderer/components/SettingsDialog", () => ({
-  SettingsDialog: () => (
+  SettingsDialog: ({
+    updateStatus,
+    onCheckForUpdates,
+  }: {
+    updateStatus: UpdateStatus;
+    onCheckForUpdates(): void;
+  }) => (
     <section role="dialog" aria-label="Settings">
       <button>Settings action</button>
+      <output aria-label="Update status">{updateStatus.state}</output>
+      <button onClick={onCheckForUpdates}>Check for updates</button>
     </section>
   ),
 }));
@@ -587,10 +599,70 @@ describe("App thread navigation", () => {
     await screen.findByText("0 conversations");
     expect(screen.queryByRole("button", { name: "Restart to update" })).toBeNull();
 
-    act(() => events.emit({ type: "update-ready" }));
+    act(() => events.emit({ type: "update-status", status: { state: "ready" } }));
     fireEvent.click(screen.getByRole("button", { name: "Restart to update" }));
 
     expect(window.fluxmail.system.installUpdate).toHaveBeenCalledOnce();
+  });
+
+  it("shows a downloading update in the sidebar until it is ready", async () => {
+    const events = installApi(
+      [],
+      vi.fn(async () => mailThread(thread("thread", "Thread", false))),
+    );
+    installMatchMedia();
+    render(<App />);
+    await screen.findByText("0 conversations");
+
+    act(() => events.emit({ type: "update-status", status: { state: "downloading" } }));
+    expect(screen.getByText("Downloading update")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Restart to update" })).toBeNull();
+
+    act(() => events.emit({ type: "update-status", status: { state: "ready" } }));
+    expect(screen.queryByText("Downloading update")).toBeNull();
+    expect(screen.getByRole("button", { name: "Restart to update" })).toBeTruthy();
+  });
+
+  it("checks for updates from Settings and follows the status events", async () => {
+    const events = installApi(
+      [],
+      vi.fn(async () => mailThread(thread("thread", "Thread", false))),
+    );
+    vi.mocked(window.fluxmail.system.updateStatus).mockResolvedValue({ state: "current" });
+    installMatchMedia();
+    render(<App />);
+    await screen.findByText("0 conversations");
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await waitFor(() =>
+      expect(screen.getByRole("status", { name: "Update status" }).textContent).toBe("current"),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
+
+    expect(window.fluxmail.system.checkForUpdates).toHaveBeenCalledOnce();
+    await waitFor(() =>
+      expect(screen.getByRole("status", { name: "Update status" }).textContent).toBe("checking"),
+    );
+    act(() => events.emit({ type: "update-status", status: { state: "downloading" } }));
+    expect(screen.getByRole("status", { name: "Update status" }).textContent).toBe("downloading");
+  });
+
+  it("shows a failed check when Settings can't reach the updater", async () => {
+    installApi(
+      [],
+      vi.fn(async () => mailThread(thread("thread", "Thread", false))),
+    );
+    installMatchMedia();
+    render(<App />);
+    await screen.findByText("0 conversations");
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    vi.mocked(window.fluxmail.system.checkForUpdates).mockRejectedValue(new Error("IPC failed"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("status", { name: "Update status" }).textContent).toBe("failed"),
+    );
   });
 
   it("shows an update that finished downloading before the window opened", async () => {
@@ -598,7 +670,7 @@ describe("App thread navigation", () => {
       [],
       vi.fn(async () => mailThread(thread("thread", "Thread", false))),
     );
-    vi.mocked(window.fluxmail.system.updateReady).mockResolvedValue(true);
+    vi.mocked(window.fluxmail.system.updateStatus).mockResolvedValue({ state: "ready" });
     installMatchMedia();
     render(<App />);
 
@@ -619,7 +691,7 @@ describe("App thread navigation", () => {
     render(<App />);
     await screen.findByRole("button", { name: "Try again" });
 
-    act(() => events.emit({ type: "update-ready" }));
+    act(() => events.emit({ type: "update-status", status: { state: "ready" } }));
     fireEvent.click(screen.getByRole("button", { name: "Restart to update" }));
 
     expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
@@ -1577,7 +1649,8 @@ function installApi(
       system: {
         confirmWindowClose: vi.fn(async () => undefined),
         cancelWindowClose: vi.fn(async () => undefined),
-        updateReady: vi.fn(async () => false),
+        updateStatus: vi.fn(async () => ({ state: "idle" })),
+        checkForUpdates: vi.fn(async () => ({ state: "checking" })),
         installUpdate: vi.fn(async () => undefined),
       },
       onEvent: vi.fn((callback: (event: AppEvent) => void) => {

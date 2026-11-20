@@ -47,6 +47,7 @@ import {
   threadSchema,
   threadTargetSchema,
   undoSendDelaySecondsSchema,
+  updateStatusSchema,
   type FluxmailDesktopApi,
 } from "../shared/contracts";
 
@@ -163,7 +164,10 @@ const api: FluxmailDesktopApi = {
   system: {
     openExternal: (url) => invoke(IPC.systemOpenExternal, url, z.url(), z.void()),
     openLegalNotices: () => invoke(IPC.systemOpenLegalNotices, undefined, z.undefined(), z.void()),
-    updateReady: () => invoke(IPC.systemUpdateReady, undefined, z.undefined(), z.boolean()),
+    updateStatus: () =>
+      invoke(IPC.systemUpdateStatus, undefined, z.undefined(), updateStatusSchema),
+    checkForUpdates: () =>
+      invoke(IPC.systemCheckForUpdates, undefined, z.undefined(), updateStatusSchema),
     installUpdate: () => invoke(IPC.systemInstallUpdate, undefined, z.undefined(), z.void()),
     cancelWindowClose: () =>
       invoke(IPC.systemWindowCloseCancel, undefined, z.undefined(), z.void()),
