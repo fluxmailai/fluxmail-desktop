@@ -2,6 +2,7 @@ import { useState, type Dispatch, type FormEvent, type SetStateAction } from "re
 import {
   ChevronsUpDown,
   ExternalLink,
+  LoaderCircle,
   Monitor,
   Moon,
   RefreshCw,
@@ -14,6 +15,7 @@ import type {
   AppearancePreference,
   BootstrapState,
   UndoSendDelaySeconds,
+  UpdateStatus,
 } from "../../shared/contracts";
 import { AccountSetupDialog, type AccountSetupProvider } from "./AccountSetupDialog";
 import { IconButton, MenuButton, SelectionCheckbox } from "./Controls";
@@ -44,12 +46,23 @@ const ABOUT_ACTIONS = [
 
 interface Props {
   state: BootstrapState;
+  updateStatus: UpdateStatus;
   onState: Dispatch<SetStateAction<BootstrapState | null>>;
+  onCheckForUpdates(): void;
+  onInstallUpdate(): void;
   onClose(): void;
   onError(message: string): void;
 }
 
-export function SettingsDialog({ state, onState, onClose, onError }: Props) {
+export function SettingsDialog({
+  state,
+  updateStatus,
+  onState,
+  onCheckForUpdates,
+  onInstallUpdate,
+  onClose,
+  onError,
+}: Props) {
   const [busy, setBusy] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [accountSetup, setAccountSetup] = useState<{
@@ -745,6 +758,11 @@ export function SettingsDialog({ state, onState, onClose, onError }: Props) {
           </section>
           <section>
             <h2>About</h2>
+            <UpdateRow
+              status={updateStatus}
+              onCheck={onCheckForUpdates}
+              onInstall={onInstallUpdate}
+            />
             <div className="settings-about">
               <span>
                 <strong>Fluxmail Desktop version</strong>
@@ -795,6 +813,78 @@ export function SettingsDialog({ state, onState, onClose, onError }: Props) {
       ) : null}
     </div>
   );
+}
+
+function UpdateRow({
+  status,
+  onCheck,
+  onInstall,
+}: {
+  status: UpdateStatus;
+  onCheck(): void;
+  onInstall(): void;
+}) {
+  const busyLabel =
+    status.state === "checking"
+      ? "Checking..."
+      : status.state === "downloading"
+        ? "Downloading..."
+        : undefined;
+  const failed = status.state === "failed";
+  return (
+    <div className="setting-select-row settings-update-row">
+      <span>
+        <strong>Updates</strong>
+        <small
+          className={failed ? "settings-update-error" : undefined}
+          role={failed ? "alert" : "status"}
+        >
+          {updateStatusMessage(status)}
+        </small>
+      </span>
+      {status.state === "ready" ? (
+        <button type="button" className="primary-button" onClick={onInstall}>
+          <RefreshCw size={13} />
+          Restart to update
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={Boolean(busyLabel) || status.state === "unavailable"}
+          onClick={onCheck}
+        >
+          {busyLabel ? <LoaderCircle size={13} className="spin" /> : null}
+          {busyLabel ?? "Check for updates"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function updateStatusMessage(status: UpdateStatus): string {
+  switch (status.state) {
+    case "unavailable":
+      return status.reason === "location"
+        ? "Move Fluxmail to your Applications folder to get updates."
+        : "Development builds can't install updates.";
+    case "idle":
+      return "Fluxmail checks for updates in the background.";
+    case "checking":
+      return "Checking for a new version.";
+    case "current":
+      return "You have the latest version.";
+    case "downloading":
+      return "Downloading a new version.";
+    case "ready":
+      return status.version
+        ? `Version ${status.version} is ready. Restart Fluxmail to install it.`
+        : "A new version is ready. Restart Fluxmail to install it.";
+    case "failed":
+      return status.stage === "download"
+        ? "Fluxmail couldn't download the update. Try again later."
+        : "Fluxmail couldn't check for updates. Check your internet connection and try again.";
+  }
 }
 
 function formatPlan(value: string): string {

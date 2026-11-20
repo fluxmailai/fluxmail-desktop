@@ -4,7 +4,7 @@ import { useState } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsDialog } from "../src/renderer/components/SettingsDialog";
-import type { BootstrapState, FluxmailDesktopApi } from "../src/shared/contracts";
+import type { BootstrapState, FluxmailDesktopApi, UpdateStatus } from "../src/shared/contracts";
 
 afterEach(cleanup);
 
@@ -29,7 +29,7 @@ describe("SettingsDialog license activation", () => {
     fireEvent.change(input, { target: { value: "fluxmail_lic_valid-key" } });
     fireEvent.click(screen.getByRole("button", { name: /^Activate$/ }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent("License activated.");
+    expect(await screen.findByText("License activated.")).toHaveAttribute("role", "status");
     expect(activate).toHaveBeenCalledWith("fluxmail_lic_valid-key");
     expect(screen.queryByLabelText("License key")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Activate license key" })).toBeVisible();
@@ -61,7 +61,13 @@ describe("SettingsDialog private image relay", () => {
   it("keeps a saved image relay preference checked but inactive on Personal", () => {
     const state = bootstrapState(false);
     const { rerender } = render(
-      <SettingsDialog state={state} onState={vi.fn()} onClose={vi.fn()} onError={vi.fn()} />,
+      <SettingsDialog
+        state={state}
+        {...UPDATE_PROPS}
+        onState={vi.fn()}
+        onClose={vi.fn()}
+        onError={vi.fn()}
+      />,
     );
     const checkbox = screen.getByRole("checkbox", {
       name: "Private image relay",
@@ -90,6 +96,7 @@ describe("SettingsDialog private image relay", () => {
             canUsePrivateImageRelay: true,
           },
         }}
+        {...UPDATE_PROPS}
         onState={vi.fn()}
         onClose={vi.fn()}
         onError={vi.fn()}
@@ -98,6 +105,67 @@ describe("SettingsDialog private image relay", () => {
 
     expect(checkbox.getAttribute("aria-checked")).toBe("true");
     expect(checkbox.disabled).toBe(false);
+  });
+});
+
+describe("SettingsDialog updates", () => {
+  it("checks for updates on request", () => {
+    const { onCheckForUpdates } = renderUpdates({ state: "current" });
+
+    expect(screen.getByText("You have the latest version.")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
+
+    expect(onCheckForUpdates).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    [{ state: "checking" }, "Checking..."],
+    [{ state: "downloading" }, "Downloading..."],
+  ] as const)("disables the button while %o", (status, label) => {
+    const { onCheckForUpdates } = renderUpdates(status);
+
+    const button = screen.getByRole("button", { name: label });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(onCheckForUpdates).not.toHaveBeenCalled();
+  });
+
+  it("offers to restart when an update is ready", () => {
+    const { onInstallUpdate } = renderUpdates({ state: "ready", version: "0.11.0" });
+
+    expect(
+      screen.getByText("Version 0.11.0 is ready. Restart Fluxmail to install it."),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Restart to update" }));
+
+    expect(onInstallUpdate).toHaveBeenCalledOnce();
+  });
+
+  it("explains a failed check and allows another", () => {
+    const { onCheckForUpdates } = renderUpdates({ state: "failed", stage: "check" });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Fluxmail couldn't check for updates.");
+    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
+    expect(onCheckForUpdates).toHaveBeenCalledOnce();
+  });
+
+  it("says when a found update failed to download", () => {
+    renderUpdates({ state: "failed", stage: "download" });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Fluxmail couldn't download the update. Try again later.",
+    );
+    expect(screen.getByRole("button", { name: "Check for updates" })).toBeEnabled();
+  });
+
+  it.each([
+    ["location", "Move Fluxmail to your Applications folder to get updates."],
+    ["development", "Development builds can't install updates."],
+  ] as const)("explains why a %s copy can't update", (reason, message) => {
+    renderUpdates({ state: "unavailable", reason });
+
+    expect(screen.getByText(message)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Check for updates" })).toBeDisabled();
   });
 });
 
@@ -182,10 +250,42 @@ describe("SettingsDialog archive behavior", () => {
   });
 });
 
+const UPDATE_PROPS = {
+  updateStatus: { state: "idle" },
+  onCheckForUpdates: vi.fn(),
+  onInstallUpdate: vi.fn(),
+} as const;
+
 function SettingsHarness({ onError = vi.fn() }: { onError?(): void }) {
   const [state, setState] = useState<BootstrapState | null>(bootstrapState(false));
   if (!state) return null;
-  return <SettingsDialog state={state} onState={setState} onClose={vi.fn()} onError={onError} />;
+  return (
+    <SettingsDialog
+      state={state}
+      {...UPDATE_PROPS}
+      onState={setState}
+      onClose={vi.fn()}
+      onError={onError}
+    />
+  );
+}
+
+function renderUpdates(updateStatus: UpdateStatus) {
+  installApi();
+  const onCheckForUpdates = vi.fn();
+  const onInstallUpdate = vi.fn();
+  render(
+    <SettingsDialog
+      state={bootstrapState(false)}
+      updateStatus={updateStatus}
+      onCheckForUpdates={onCheckForUpdates}
+      onInstallUpdate={onInstallUpdate}
+      onState={vi.fn()}
+      onClose={vi.fn()}
+      onError={vi.fn()}
+    />,
+  );
+  return { onCheckForUpdates, onInstallUpdate };
 }
 
 function installApi(

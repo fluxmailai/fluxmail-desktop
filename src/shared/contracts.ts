@@ -529,13 +529,25 @@ export const featureEventSchema = z.object({
 });
 export type FeatureEvent = z.infer<typeof featureEventSchema>;
 
+export const updateStatusSchema = z.discriminatedUnion("state", [
+  // Development builds and copies outside Applications can't install updates.
+  z.object({ state: z.literal("unavailable"), reason: z.enum(["development", "location"]) }),
+  z.object({ state: z.literal("idle") }),
+  z.object({ state: z.literal("checking") }),
+  z.object({ state: z.literal("current") }),
+  z.object({ state: z.literal("downloading") }),
+  z.object({ state: z.literal("ready"), version: z.string().min(1).max(64).optional() }),
+  z.object({ state: z.literal("failed"), stage: z.enum(["check", "download"]) }),
+]);
+export type UpdateStatus = z.infer<typeof updateStatusSchema>;
+
 export const appEventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("sync-status"), state: syncStateSchema }),
   z.object({ type: z.literal("view-sync-status"), syncing: z.boolean() }),
   z.object({ type: z.literal("cache-changed") }),
   z.object({ type: z.literal("accounts-changed") }),
   z.object({ type: z.literal("license-changed") }),
-  z.object({ type: z.literal("update-ready") }),
+  z.object({ type: z.literal("update-status"), status: updateStatusSchema }),
   z.object({ type: z.literal("new-mail"), count: z.number().int().positive() }),
   z.object({ type: z.literal("window-close-requested") }),
   z.object({ type: z.literal("find-in-conversation-requested") }),
@@ -634,7 +646,8 @@ export interface FluxmailDesktopApi {
   system: {
     openExternal(url: string): Promise<void>;
     openLegalNotices(): Promise<void>;
-    updateReady(): Promise<boolean>;
+    updateStatus(): Promise<UpdateStatus>;
+    checkForUpdates(): Promise<UpdateStatus>;
     installUpdate(): Promise<void>;
     cancelWindowClose(): Promise<void>;
     confirmWindowClose(): Promise<void>;
@@ -687,7 +700,8 @@ export const IPC = {
   analyticsFeature: "fluxmail:analytics:feature",
   systemOpenExternal: "fluxmail:system:open-external",
   systemOpenLegalNotices: "fluxmail:system:open-legal-notices",
-  systemUpdateReady: "fluxmail:system:update-ready",
+  systemUpdateStatus: "fluxmail:system:update-status",
+  systemCheckForUpdates: "fluxmail:system:check-for-updates",
   systemInstallUpdate: "fluxmail:system:install-update",
   systemWindowCloseCancel: "fluxmail:system:window-close-cancel",
   systemWindowCloseConfirm: "fluxmail:system:window-close-confirm",

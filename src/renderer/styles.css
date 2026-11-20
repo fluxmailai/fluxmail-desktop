@@ -454,6 +454,15 @@ textarea:focus-visible,
   color: var(--accent-deep);
 }
 
+.sidebar-update-progress {
+  cursor: default;
+  user-select: none;
+}
+
+.sidebar-update-progress:hover {
+  color: var(--accent);
+}
+
 .sidebar.collapsed {
   overflow: hidden;
   visibility: hidden;
@@ -2710,6 +2719,20 @@ textarea:focus-visible,
 .form-success {
   color: var(--accent-deep);
   font-size: 10px;
+}
+
+.settings-update-row .secondary-button,
+.settings-update-row .primary-button {
+  flex: 0 0 auto;
+}
+
+.settings-update-row .secondary-button:disabled {
+  opacity: 0.58;
+  pointer-events: none;
+}
+
+.settings-update-row .settings-update-error {
+  color: var(--danger);
 }
 
 .settings-about {
