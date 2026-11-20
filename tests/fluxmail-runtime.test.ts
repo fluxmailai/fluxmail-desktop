@@ -2045,7 +2045,7 @@ describe("FluxmailRuntime conversation mutations", () => {
     expect(cache.snapshotThread(account.id, "thread-1")?.message_count).toBe(1);
   });
 
-  it("refuses to delete a conversation the provider returned only part of", async () => {
+  it("deletes the messages an incomplete thread response found", async () => {
     const cache = createCache();
     const first = inboxMessage({ id: "first", threadId: "thread-1" });
     const second = inboxMessage({
@@ -2058,7 +2058,9 @@ describe("FluxmailRuntime conversation mutations", () => {
       subject: "Hello",
       messages: [first, second],
     });
-    const modify = vi.fn();
+    const modify = vi.fn(async (_accountId: string, ids: string[]) => ({
+      succeededIds: ids,
+    }));
     const runtime = createRuntimeWithCache({
       cache,
       service: {
@@ -2073,12 +2075,10 @@ describe("FluxmailRuntime conversation mutations", () => {
       onCacheChanged: vi.fn(),
     });
 
-    await expect(
-      runtime.modify([{ accountId: account.id, threadId: "thread-1" }], { type: "delete" }),
-    ).rejects.toThrow("couldn't find every message");
+    await runtime.modify([{ accountId: account.id, threadId: "thread-1" }], { type: "delete" });
 
-    expect(modify).not.toHaveBeenCalled();
-    expect(cache.messageIds(account.id, "thread-1").sort()).toEqual(["first", "second"]);
+    expect(modify).toHaveBeenCalledWith(account.id, ["second"], "delete");
+    expect(cache.snapshotThread(account.id, "thread-1")).toBeUndefined();
   });
 });
 

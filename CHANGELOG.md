@@ -15,7 +15,7 @@ Fluxmail Desktop records user-facing changes in this file. The format follows [C
 
 - Find new IMAP mail that arrives after Fluxmail has opened a folder of more than 2,000 messages.
 - Search every folder of an IMAP account with many folders, instead of stopping after the first ten.
-- Stop searching other folders for an IMAP conversation's messages after 25 seconds, and show the ones found by then. Fluxmail won't permanently delete a conversation it couldn't finish searching.
+- Stop searching other folders for an IMAP conversation's messages after 25 seconds, and show the ones found by then.
 - Stop listing images embedded in an IMAP message as attachments.
 - Load message bodies from IMAP servers, such as Yahoo, that send body parts as quoted strings.
 - Block Sendinblue (Brevo) tracking pixels, which the tracker list missed because of a typo.

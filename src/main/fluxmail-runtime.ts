@@ -876,12 +876,6 @@ export class FluxmailRuntime {
                     target.accountId,
                     target.threadId,
                   );
-                  // The cache drops a deleted conversation whole, so a delete can't go ahead
-                  // while the provider may have missed some of its messages.
-                  if (action.type === "delete" && thread.incomplete)
-                    throw new Error(
-                      "Fluxmail couldn't find every message in this conversation in time, so it didn't delete it. Try again.",
-                    );
                   return {
                     target,
                     thread,
