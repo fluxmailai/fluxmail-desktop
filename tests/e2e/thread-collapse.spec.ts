@@ -71,3 +71,44 @@ test("collapses read messages when a conversation opens", async () => {
     rmSync(dataDirectory, { recursive: true, force: true });
   }
 });
+
+test("folds the middle of a long conversation behind a count row", async () => {
+  const dataDirectory = mkdtempSync(path.join(tmpdir(), "fluxmail-thread-fold-e2e-"));
+  const electronApp = await electron.launch({
+    args: ["--use-mock-keychain", process.cwd()],
+    env: {
+      ...process.env,
+      FLUXMAIL_DESKTOP_FAKE_MAIL: "1",
+      FLUXMAIL_DESKTOP_E2E_HEADLESS: "1",
+      FLUXMAIL_DESKTOP_TEST_DATA_DIR: dataDirectory,
+      FLUXMAIL_DATA_DIR: path.join(dataDirectory, ".fluxmail"),
+      FLUXMAIL_TELEMETRY: "0",
+    },
+  });
+
+  try {
+    const page = await electronApp.firstWindow();
+    await expect(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
+    const search = page.getByRole("combobox", { name: "Search mail" });
+    await search.fill("Globex contract");
+    await search.press("Enter");
+    const row = page.locator(".thread-row", { hasText: "Renewal - Globex contract" });
+    await row.locator(".thread-open").click();
+    await expect(page.getByRole("heading", { name: "Renewal - Globex contract" })).toBeVisible();
+
+    // Seven messages: the first and the two newest keep their cards.
+    await expect(page.locator(".message-card")).toHaveCount(3);
+    const folded = page.getByRole("button", { name: "Show 4 collapsed messages" });
+    await expect(folded).toBeVisible();
+
+    await folded.click();
+    await expect(page.locator(".message-card")).toHaveCount(7);
+    await expect(folded).toHaveCount(0);
+    await expect(
+      page.locator(".message-card").nth(1).locator(".message-header-toggle"),
+    ).toBeFocused();
+  } finally {
+    await electronApp.close();
+    rmSync(dataDirectory, { recursive: true, force: true });
+  }
+});

@@ -1548,6 +1548,63 @@ textarea:focus-visible,
   margin-bottom: 14px;
 }
 
+.folded-messages {
+  display: flex;
+  width: calc(100% + 22px);
+  min-height: 52px;
+  align-items: center;
+  gap: 12px;
+  margin: 0 -11px;
+  border: 0;
+  padding: 8px 11px;
+  background: var(--mail-surface);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  transition: background-color 100ms ease;
+}
+
+.folded-messages:hover {
+  background: color-mix(in srgb, var(--field) 62%, var(--mail-surface));
+}
+
+.folded-messages-count {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--hairline);
+  border-radius: 50%;
+  background: var(--mail-surface);
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 620;
+  transition:
+    border-color 100ms ease,
+    color 100ms ease;
+}
+
+.folded-messages-label {
+  transition: color 100ms ease;
+}
+
+.folded-messages:hover .folded-messages-count {
+  border-color: color-mix(in srgb, var(--muted) 45%, var(--hairline));
+  color: var(--ink);
+}
+
+.folded-messages:hover .folded-messages-label {
+  color: var(--ink-soft);
+}
+
+.folded-messages:focus-visible {
+  outline-offset: -2px;
+}
+
 .message-header {
   position: relative;
   display: flex;

@@ -247,6 +247,197 @@ describe("ReadingPane", () => {
     ]);
   });
 
+  it("folds the collapsed middle of a long conversation behind a count row", async () => {
+    const thread = threadWithMessages("Long thread", [true, true, true, true, true, false]);
+    Object.defineProperty(window, "fluxmail", {
+      configurable: true,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread: vi.fn(async () => thread) },
+      } as unknown as FluxmailDesktopApi,
+    });
+    renderPane(summary({ messageCount: 6 }));
+    await screen.findByText("Long thread");
+
+    expect(shownMessageIds()).toEqual(["message-1", "message-5", "message-6"]);
+    const row = screen.getByRole("button", { name: "Show 3 collapsed messages" });
+
+    fireEvent.click(row);
+
+    expect(shownMessageIds()).toEqual([
+      "message-1",
+      "message-2",
+      "message-3",
+      "message-4",
+      "message-5",
+      "message-6",
+    ]);
+    expect(screen.queryByRole("button", { name: /collapsed messages/ })).toBeNull();
+    expect(document.activeElement).toBe(messageToggle("message-2"));
+  });
+
+  it("keeps short runs and unread messages out of the count rows", async () => {
+    const thread = threadWithMessages("Split thread", [
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+    ]);
+    Object.defineProperty(window, "fluxmail", {
+      configurable: true,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread: vi.fn(async () => thread) },
+      } as unknown as FluxmailDesktopApi,
+    });
+    renderPane(summary({ messageCount: 8 }));
+    await screen.findByText("Split thread");
+
+    expect(shownMessageIds()).toEqual(["message-1", "message-4", "message-7", "message-8"]);
+    expect(
+      screen
+        .getAllByRole("button", { name: /collapsed messages/ })
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Show 2 collapsed messages", "Show 2 collapsed messages"]);
+
+    // Revealing one row leaves the other folded, and a revealed message keeps its card.
+    fireEvent.click(screen.getAllByRole("button", { name: /collapsed messages/ })[1]!);
+    fireEvent.click(messageToggle("message-5"));
+    fireEvent.click(messageToggle("message-5"));
+    expect(shownMessageIds()).toEqual([
+      "message-1",
+      "message-4",
+      "message-5",
+      "message-6",
+      "message-7",
+      "message-8",
+    ]);
+
+    // A message the reader opened and closed again stays on screen.
+    fireEvent.click(screen.getByRole("button", { name: "Show 2 collapsed messages" }));
+    fireEvent.click(messageToggle("message-4"));
+    expect(shownMessageIds()).toHaveLength(8);
+  });
+
+  it("shows every message while finding in a long conversation", async () => {
+    const thread = threadWithMessages("Searchable thread", [true, true, true, true, true]);
+    Object.defineProperty(window, "fluxmail", {
+      configurable: true,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread: vi.fn(async () => thread) },
+      } as unknown as FluxmailDesktopApi,
+    });
+    const ref = createRef<ReadingPaneHandle>();
+    renderPane(summary({ messageCount: 5 }), { ref });
+    await screen.findByText("Searchable thread");
+    expect(shownMessageIds()).toEqual(["message-1", "message-4", "message-5"]);
+
+    act(() => ref.current?.openFind());
+    fireEvent.change(screen.getByRole("textbox", { name: "Find in conversation" }), {
+      target: { value: "Email" },
+    });
+
+    expect(shownMessageIds()).toHaveLength(5);
+    expect(screen.getAllByText("Email body")).toHaveLength(5);
+
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Find in conversation" }), {
+      key: "Escape",
+    });
+    expect(shownMessageIds()).toEqual(["message-1", "message-4", "message-5"]);
+  });
+
+  it("keeps shown messages on screen when a long conversation reloads", async () => {
+    let thread = threadWithMessages("Busy thread", [true, true, true, true, true]);
+    Object.defineProperty(window, "fluxmail", {
+      configurable: true,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread: vi.fn(async () => thread) },
+      } as unknown as FluxmailDesktopApi,
+    });
+    const { rerender } = renderPane(summary({ messageCount: 5 }));
+    await screen.findByText("Busy thread");
+    expect(shownMessageIds()).toEqual(["message-1", "message-4", "message-5"]);
+
+    // Two replies arrive; the messages already shown keep their cards.
+    thread = threadWithMessages("Busy thread", [true, true, true, true, true, true, false]);
+    rerender(paneElement(summary({ messageCount: 7 })));
+
+    await waitFor(() => expect(shownMessageIds()).toHaveLength(5));
+    expect(shownMessageIds()).toEqual([
+      "message-1",
+      "message-4",
+      "message-5",
+      "message-6",
+      "message-7",
+    ]);
+    expect(screen.getByRole("button", { name: "Show 2 collapsed messages" })).toBeTruthy();
+  });
+
+  it("unfolds a message that becomes one of the two newest", async () => {
+    let thread = threadWithMessages("Shrinking thread", [true, true, true, true, true, true]);
+    Object.defineProperty(window, "fluxmail", {
+      configurable: true,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread: vi.fn(async () => thread) },
+      } as unknown as FluxmailDesktopApi,
+    });
+    const { rerender } = renderPane(summary({ messageCount: 6 }));
+    await screen.findByText("Shrinking thread");
+    expect(shownMessageIds()).toEqual(["message-1", "message-5", "message-6"]);
+
+    // The newest message goes away, as an undone send's draft does.
+    thread = threadWithMessages("Shrinking thread", [true, true, true, true, true]);
+    rerender(paneElement(summary({ messageCount: 5 })));
+
+    await waitFor(() => expect(shownMessageIds()).toEqual(["message-1", "message-4", "message-5"]));
+    expect(screen.getByRole("button", { name: "Show 2 collapsed messages" })).toBeTruthy();
+
+    // A reply arrives; the message revealed above keeps its card.
+    thread = threadWithMessages("Shrinking thread", [true, true, true, true, true, false]);
+    rerender(paneElement(summary({ messageCount: 6 })));
+
+    await waitFor(() => expect(shownMessageIds()).toHaveLength(4));
+    expect(shownMessageIds()).toEqual(["message-1", "message-4", "message-5", "message-6"]);
+  });
+
+  it("folds a long conversation again when it is reopened", async () => {
+    const thread = threadWithMessages("Reopened thread", [true, true, true, true, true]);
+    Object.defineProperty(window, "fluxmail", {
+      configurable: true,
+      value: {
+        accounts: { sendAs: async () => [] },
+        mail: { getThread: vi.fn(async () => thread) },
+      } as unknown as FluxmailDesktopApi,
+    });
+    const { rerender } = renderPane(summary({ messageCount: 5 }));
+    await screen.findByText("Reopened thread");
+    fireEvent.click(screen.getByRole("button", { name: "Show 2 collapsed messages" }));
+    expect(shownMessageIds()).toHaveLength(5);
+
+    rerender(
+      <ReadingPane
+        view="inbox"
+        labels={[]}
+        allowPermanentDelete={false}
+        onModify={vi.fn(async () => undefined)}
+        onError={vi.fn()}
+        onQuickReplyDirtyChange={vi.fn()}
+      />,
+    );
+    await screen.findByText("Select a conversation");
+    rerender(paneElement(summary({ messageCount: 5 })));
+
+    await screen.findByRole("button", { name: "Show 2 collapsed messages" });
+    expect(shownMessageIds()).toEqual(["message-1", "message-4", "message-5"]);
+  });
+
   it("reports when a conversation finishes loading, even when it fails", async () => {
     const onThreadLoaded = vi.fn();
     const getThread = vi
@@ -1539,6 +1730,18 @@ function threadWithMessages(subject: string, read: boolean[]): MailThread {
     flags: { read: isRead, starred: false, draft: false },
   }));
   return thread;
+}
+
+function shownMessageIds(): string[] {
+  return [...document.querySelectorAll<HTMLElement>("[data-message-id]")].map(
+    (card) => card.dataset.messageId!,
+  );
+}
+
+function messageToggle(messageId: string): HTMLButtonElement {
+  return document.querySelector<HTMLButtonElement>(
+    `[data-message-id="${messageId}"] .message-header-toggle`,
+  )!;
 }
 
 function messageToggleLabels(): Array<string | null> {

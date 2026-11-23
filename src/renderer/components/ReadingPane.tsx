@@ -137,6 +137,36 @@ function withUnreadMessageIds(
   const added = messages.filter((message) => !message.flags.read && !current.has(message.id));
   return added.length ? new Set([...current, ...added.map((message) => message.id)]) : current;
 }
+
+// The fewest collapsed messages worth replacing with a count row.
+const MIN_FOLDED_MESSAGES = 2;
+
+/**
+ * The collapsed messages a long conversation folds behind a count row when it opens. The first
+ * message and the two newest always keep their own cards, as do expanded messages.
+ */
+function foldableMessageIds(
+  messages: readonly MailMessage[],
+  expanded: (message: MailMessage) => boolean,
+): ReadonlySet<string> {
+  const ids = new Set<string>();
+  let run: string[] = [];
+  const endRun = () => {
+    if (run.length >= MIN_FOLDED_MESSAGES) for (const id of run) ids.add(id);
+    run = [];
+  };
+  for (const message of messages.slice(1, -2)) {
+    if (expanded(message)) endRun();
+    else run.push(message.id);
+  }
+  endRun();
+  return ids.size ? ids : NO_MESSAGE_IDS;
+}
+
+type ConversationItem =
+  | { type: "message"; message: MailMessage; index: number }
+  | { type: "folded"; messages: MailMessage[] };
+
 const MESSAGE_DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
@@ -195,6 +225,14 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
     useState<ReadonlyMap<string, boolean>>(NO_EXPANDED_OVERRIDES);
   // The conversation the expanded messages belong to, so reloading it keeps the reader's place.
   const expansionThread = useRef<string | undefined>(undefined);
+  // Messages folded behind a count row, chosen when a conversation opens so a message the reader
+  // has seen never folds away later.
+  const [foldedMessages, setFoldedMessages] = useState<{
+    thread: string;
+    ids: ReadonlySet<string>;
+  }>({ thread: "", ids: NO_MESSAGE_IDS });
+  // The first message a count row revealed, which takes the row's focus.
+  const revealedMessageId = useRef<string | undefined>(undefined);
   const onThreadLoadedRef = useRef(onThreadLoaded);
   onThreadLoadedRef.current = onThreadLoaded;
   composerRef.current = composer;
@@ -243,7 +281,32 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
 
   const handleExpandedChange = useCallback((messageId: string, expanded: boolean) => {
     setExpandedOverrides((current) => new Map(current).set(messageId, expanded));
+    // A folded message the reader can toggle is on screen, so collapsing it keeps its card.
+    setFoldedMessages((current) => {
+      if (!current.ids.has(messageId)) return current;
+      const ids = new Set(current.ids);
+      ids.delete(messageId);
+      return { ...current, ids };
+    });
   }, []);
+
+  const revealFoldedMessages = useCallback((messageIds: readonly string[]) => {
+    revealedMessageId.current = messageIds[0];
+    setFoldedMessages((current) => ({
+      ...current,
+      ids: new Set([...current.ids].filter((id) => !messageIds.includes(id))),
+    }));
+  }, []);
+
+  useLayoutEffect(() => {
+    const messageId = revealedMessageId.current;
+    if (!messageId || !scroller) return;
+    revealedMessageId.current = undefined;
+    [...scroller.querySelectorAll<HTMLElement>("[data-message-id]")]
+      .find((card) => card.dataset.messageId === messageId)
+      ?.querySelector<HTMLElement>(".message-header-toggle")
+      ?.focus();
+  }, [foldedMessages, scroller]);
 
   useEffect(() => {
     composerDirty.current = false;
@@ -358,6 +421,7 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
       expansionThread.current = identity;
       setUnreadMessageIds(NO_MESSAGE_IDS);
       setExpandedOverrides(NO_EXPANDED_OVERRIDES);
+      setFoldedMessages({ thread: "", ids: NO_MESSAGE_IDS });
     }
     detailKey.current = undefined;
     setDraftSeed(undefined);
@@ -501,6 +565,42 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
   );
   const replyTarget = [...messages].reverse().find((message) => !message.flags.draft);
   const latestMessageId = messages.at(-1)?.id;
+  const isExpanded = (message: MailMessage) =>
+    expandedOverrides.get(message.id) ??
+    (message.id === latestMessageId || unreadMessageIds.has(message.id));
+  // Choose what to fold once the open conversation's own messages arrive.
+  let foldedIds = foldedMessages.ids;
+  if (detailKey.current === threadIdentity) {
+    if (foldedMessages.thread !== threadIdentity)
+      foldedIds = foldableMessageIds(messages, isExpanded);
+    // The first message and the two newest keep their cards even when the list changed since the
+    // fold was chosen, such as when an undone send removes its draft. Once shown, they stay shown.
+    const shownIds = [messages[0], ...messages.slice(-2)]
+      .map((message) => message?.id)
+      .filter((id) => id !== undefined && foldedIds.has(id));
+    if (shownIds.length) foldedIds = new Set([...foldedIds].filter((id) => !shownIds.includes(id)));
+    if (foldedMessages.thread !== threadIdentity || foldedIds !== foldedMessages.ids)
+      setFoldedMessages({ thread: threadIdentity, ids: foldedIds });
+  }
+  const findActive = Boolean(findOpen && findQuery);
+  const conversationItems: ConversationItem[] = [];
+  let foldedRun: Array<{ message: MailMessage; index: number }> = [];
+  const endFoldedRun = () => {
+    if (foldedRun.length >= MIN_FOLDED_MESSAGES)
+      conversationItems.push({ type: "folded", messages: foldedRun.map(({ message }) => message) });
+    else for (const entry of foldedRun) conversationItems.push({ type: "message", ...entry });
+    foldedRun = [];
+  };
+  messages.forEach((message, index) => {
+    // Find counts matches in each message's body, so it shows every message.
+    if (!findActive && foldedIds.has(message.id) && !isExpanded(message)) {
+      foldedRun.push({ message, index });
+      return;
+    }
+    endFoldedRun();
+    conversationItems.push({ type: "message", message, index });
+  });
+  endFoldedRun();
   const replyAllAvailable = Boolean(
     replyTarget && shouldOfferReplyAll(detail.accountEmail, replyTarget),
   );
@@ -650,7 +750,16 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
               </div>
             ) : null}
           </div>
-          {messages.map((message, index) => {
+          {conversationItems.map((item) => {
+            if (item.type === "folded")
+              return (
+                <FoldedMessagesRow
+                  key={`folded-${item.messages[0]!.id}`}
+                  count={item.messages.length}
+                  onReveal={() => revealFoldedMessages(item.messages.map((message) => message.id))}
+                />
+              );
+            const { message, index } = item;
             const matchCount = findMatchCounts[message.id] ?? 0;
             const localActiveFindMatch =
               activeFindMatch >= findMatchOffset && activeFindMatch < findMatchOffset + matchCount
@@ -664,10 +773,7 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
                 // The first message's quote may be the only copy of what someone was added to
                 // the conversation to read.
                 collapseQuotedHistory={index > 0}
-                expanded={
-                  expandedOverrides.get(message.id) ??
-                  (message.id === latestMessageId || unreadMessageIds.has(message.id))
-                }
+                expanded={isExpanded(message)}
                 onExpandedChange={handleExpandedChange}
                 blockRemoteImages={blockRemoteImages}
                 imageRelay={imageRelay}
@@ -766,6 +872,20 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
   );
 });
 
+function FoldedMessagesRow({ count, onReveal }: { count: number; onReveal(): void }) {
+  return (
+    <button
+      type="button"
+      className="folded-messages"
+      aria-label={`Show ${count} collapsed messages`}
+      onClick={onReveal}
+    >
+      <span className="folded-messages-count">{count}</span>
+      <span className="folded-messages-label">collapsed messages</span>
+    </button>
+  );
+}
+
 const MessageCard = memo(function MessageCard({
   message,
   collapseQuotedHistory,
@@ -806,7 +926,7 @@ const MessageCard = memo(function MessageCard({
     if (!findQuery) onExpandedChange(message.id, !expanded);
   };
   return (
-    <article className="message-card">
+    <article className="message-card" data-message-id={message.id}>
       <div className="message-header">
         <button
           type="button"

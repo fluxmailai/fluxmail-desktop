@@ -95,9 +95,35 @@ export const SALES_THREADS: DemoThreadSpec[] = [
       },
       {
         from: CHEN_LIU,
+        at: { days: 3, time: "18:02" },
+        html: `<p>Quick one before I loop in procurement: does the prorate credit cover the two add-ons we bought in March, or just the base plan?</p>
+<p>Chen</p>`,
+      },
+      {
+        from: "me",
+        to: CHEN_LIU.email,
+        at: { days: 3, time: "18:40" },
+        html: `<p>It covers both. The add-ons prorate on the same schedule as the base plan, so the ~$11,200 already includes them.</p>
+<p>John</p>`,
+      },
+      {
+        from: CHEN_LIU,
+        at: { days: 2, time: "07:45" },
+        html: `<p>Great. Procurement wants the quote on our vendor template and a W-9. Can you do both?</p>
+<p>Chen</p>`,
+      },
+      {
+        from: "me",
+        to: CHEN_LIU.email,
+        at: { days: 2, time: "08:20" },
+        html: `<p>Sure. Send the template over and I'll fill it in today. I'll attach the W-9 with the quote.</p>
+<p>John</p>`,
+      },
+      {
+        from: CHEN_LIU,
         at: { days: 2, time: "09:00" },
         isRead: false,
-        html: `<p>Yes please send the quote, we'd like to do it this week if we can.</p>
+        html: `<p>Template's attached. Send the quote whenever it's ready, we'd like to sign this week if we can.</p>
 <p>Chen</p>`,
       },
     ],
