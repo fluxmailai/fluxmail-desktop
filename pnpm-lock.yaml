@@ -118,8 +118,8 @@ importers:
         specifier: 5.2.0
         version: 5.2.0(supports-color@8.1.1)(vite@7.3.7(@types/node@26.6.6)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.49.0)(yaml@2.9.0))
       electron:
-        specifier: 43.8.7
-        version: 43.8.7(supports-color@8.1.1)
+        specifier: 43.8.10
+        version: 43.8.10(supports-color@8.1.1)
       jsdom:
         specifier: 29.1.1
         version: 29.1.1
@@ -2324,8 +2324,8 @@ packages:
   electron-to-chromium@1.5.389:
     resolution: {integrity: sha512-cEto7aeOqBfU1D+c5py5pE+ooscKE75JifxLBdFUZsqAxRS6y7kebtxAZvICszSl05gPjYHDTjY+lXpyGvpJbg==}
 
-  electron@43.8.7:
-    resolution: {integrity: sha512-F3Z7xEYlS62Re9Y2WCRhB8jFIkDwpUO7wjJ85l8NpPEgQ/CEyBvwtYEsNY2lioT7VOWi2vBrnMckCvXBkq+Cnw==}
+  electron@43.8.10:
+    resolution: {integrity: sha512-He/CVZxahZbDOS++eIwzU+XubARqz8s3d/eqPCmE/VcWc67yf8sei5vbKVZJE2jCmqqbbr5yWrWKmXJSyds8Ug==}
     engines: {node: '>= 22.12.0'}
     hasBin: true
 
@@ -6756,7 +6756,7 @@ snapshots:
 
   electron-to-chromium@1.5.389: {}
 
-  electron@43.8.7(supports-color@8.1.1):
+  electron@43.8.10(supports-color@8.1.1):
     dependencies:
       '@electron-internal/extract-zip': 1.0.4
       '@electron/get': 5.0.0(supports-color@8.1.1)
