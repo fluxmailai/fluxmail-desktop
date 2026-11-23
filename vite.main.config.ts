@@ -4,6 +4,9 @@ import path from "node:path";
 
 export const mainExternalDependencies = ["better-sqlite3", "@node-rs/argon2"];
 
+const mainImportMetaUrlIdentifier = "__fluxmailImportMetaUrl";
+export const mainImportMetaUrlIntro = `var ${mainImportMetaUrlIdentifier} = require("node:url").pathToFileURL(__filename).href;`;
+
 export function loadDesktopOAuthConfig(mode: string, root = process.cwd()) {
   const environment = loadEnv(mode, root, "");
   return {
@@ -43,11 +46,14 @@ export default defineConfig(({ mode }) => {
     define: {
       __FLUXMAIL_GOOGLE_CLIENT_ID__: JSON.stringify(oauth.clientId),
       __FLUXMAIL_GOOGLE_CLIENT_SECRET__: JSON.stringify(oauth.clientSecret),
+      // Rolldown leaves import.meta empty in CommonJS output, so give each chunk its own file URL.
+      "import.meta.url": mainImportMetaUrlIdentifier,
     },
     build: {
       assetsInlineLimit: 0,
-      rollupOptions: {
+      rolldownOptions: {
         external: mainExternalDependencies,
+        output: { intro: mainImportMetaUrlIntro },
       },
     },
   };
