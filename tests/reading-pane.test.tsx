@@ -398,6 +398,13 @@ describe("ReadingPane", () => {
 
     await waitFor(() => expect(shownMessageIds()).toEqual(["message-1", "message-4", "message-5"]));
     expect(screen.getByRole("button", { name: "Show 2 collapsed messages" })).toBeTruthy();
+
+    // A reply arrives; the message revealed above keeps its card.
+    thread = threadWithMessages("Shrinking thread", [true, true, true, true, true, false]);
+    rerender(paneElement(summary({ messageCount: 6 })));
+
+    await waitFor(() => expect(shownMessageIds()).toHaveLength(4));
+    expect(shownMessageIds()).toEqual(["message-1", "message-4", "message-5", "message-6"]);
   });
 
   it("folds a long conversation again when it is reopened", async () => {

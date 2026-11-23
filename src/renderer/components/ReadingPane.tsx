@@ -570,9 +570,17 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
     (message.id === latestMessageId || unreadMessageIds.has(message.id));
   // Choose what to fold once the open conversation's own messages arrive.
   let foldedIds = foldedMessages.ids;
-  if (foldedMessages.thread !== threadIdentity && detailKey.current === threadIdentity) {
-    foldedIds = foldableMessageIds(messages, isExpanded);
-    setFoldedMessages({ thread: threadIdentity, ids: foldedIds });
+  if (detailKey.current === threadIdentity) {
+    if (foldedMessages.thread !== threadIdentity)
+      foldedIds = foldableMessageIds(messages, isExpanded);
+    // The first message and the two newest keep their cards even when the list changed since the
+    // fold was chosen, such as when an undone send removes its draft. Once shown, they stay shown.
+    const shownIds = [messages[0], ...messages.slice(-2)]
+      .map((message) => message?.id)
+      .filter((id) => id !== undefined && foldedIds.has(id));
+    if (shownIds.length) foldedIds = new Set([...foldedIds].filter((id) => !shownIds.includes(id)));
+    if (foldedMessages.thread !== threadIdentity || foldedIds !== foldedMessages.ids)
+      setFoldedMessages({ thread: threadIdentity, ids: foldedIds });
   }
   const findActive = Boolean(findOpen && findQuery);
   const conversationItems: ConversationItem[] = [];
@@ -584,15 +592,8 @@ export const ReadingPane = forwardRef<ReadingPaneHandle, Props>(function Reading
     foldedRun = [];
   };
   messages.forEach((message, index) => {
-    // Find counts matches in each message's body, so it shows every message. The first message
-    // and the two newest keep their cards even when the list changed since the fold was chosen.
-    if (
-      !findActive &&
-      index > 0 &&
-      index < messages.length - 2 &&
-      foldedIds.has(message.id) &&
-      !isExpanded(message)
-    ) {
+    // Find counts matches in each message's body, so it shows every message.
+    if (!findActive && foldedIds.has(message.id) && !isExpanded(message)) {
       foldedRun.push({ message, index });
       return;
     }
